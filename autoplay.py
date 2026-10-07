@@ -1,0 +1,278 @@
+"""Closed-loop controller. Pure logic with an injected, guarded key-tap sink."""
+from overlay_vision import SHAPES
+import random
+from preferences import bounded
+
+def cells(piece,pos):
+    return sorted((pos['x']+x,pos['y']+y) for x,y in SHAPES[piece][pos['r']])
+
+def fits(board,piece,pos):
+    return all(0<=x<10 and -4<=y<20 and (y<0 or not board[y][x]) for x,y in cells(piece,pos))
+
+def landing(board,piece,pos):
+    p=dict(pos)
+    if not fits(board,piece,p):return None
+    while fits(board,piece,dict(p,y=p['y']+1)):p['y']+=1
+    return p
+
+def garbage_shift(expected,actual):
+    for n in range(1,13):
+        if not all(sum(v=='G' for v in r)>=8 and sum(bool(v) for v in r)<10 for r in actual[-n:]):break
+        if expected[n:]==actual[:-n]:return n
+    return 0
+
+class AutoPlayer:
+    def __init__(self,tap,release=lambda:None,rng=None):
+        self.tap=tap;self.release=release;self.enabled=False;self.phase='off';self.reason='Autopilot disarmed'
+        self.plan=None;self.waiting=None;self.started=0;self.last_seen=0;self.chain={'combo':0,'b2b':0};self.placed=0
+        self.planning_key=None;self.planning_at=0
+        self.paused_at=None;self.retries=0
+        self.hold_blocked=False;self.held_piece=None
+        self.early_spawn=None
+        self.recovery=None;self.revision=0;self.failed_motion=None
+        self.vk={'L':0x25,'R':0x27,'CW':0x58,'CCW':0x5a,'DROP':0x20,'HOLD':0x10}
+        self.rng=rng or random.Random();self.key_rate=30;self.humanization=0
+        self.last_tap_at=float('-inf');self.pace_factor=1;self.human_considered=False
+
+    def configure(self,key_rate=30,humanization=0):
+        self.key_rate=bounded(key_rate,2,30,30)
+        self.humanization=bounded(humanization,0,100,0)
+
+    def pace_ready(self,now):
+        interval=0 if self.key_rate>=30 else 1/self.key_rate
+        return now-self.last_tap_at>=interval*self.pace_factor
+
+    def send(self,action,now):
+        if not self.tap(self.vk[action]):return False
+        self.last_tap_at=now
+        self.pace_factor=1+self.rng.uniform(-.12,.12)*self.humanization/100
+        return True
+
+    def human_prefix(self,state,candidate,observed):
+        """One optional lateral out-and-back pair; both taps use normal feedback.
+
+        No random DROP, HOLD or rotation. No flourish on a crowded board, low
+        landing clearance, inferred pose or recovery attempt. A failed pair is
+        abandoned and replanned from pixels, never corrected blindly.
+        """
+        if self.human_considered or not observed:return []
+        self.human_considered=True
+        if not self.humanization or self.retries or candidate.get('auto',{}).get('mode')=='survive':return []
+        if any(any(row) for row in state['board'][:11]) or state['start']['y']>3:return []
+        if self.rng.random()>=self.humanization/100:return []
+        options=[]
+        for outward,back,dx in [('L','R',-1),('R','L',1)]:
+            shifted=dict(state['start'],x=state['start']['x']+dx)
+            end=landing(state['board'],state['piece'],shifted)
+            if end and end['y']-shifted['y']>=7:options.append([outward,back])
+        return self.rng.choice(options) if options else []
+
+    def start(self,now):
+        self.enabled=True;self.phase='ready';self.reason='Waiting for piece';self.plan=None;self.waiting=None
+        self.started=now+.35;self.last_seen=now;self.chain={'combo':0,'b2b':0};self.placed=0
+        self.planning_key=None
+        self.paused_at=None;self.retries=0
+        self.hold_blocked=False;self.held_piece=None
+        self.early_spawn=None
+        self.recovery=None;self.revision+=1;self.failed_motion=None
+        self.last_tap_at=float('-inf');self.pace_factor=1;self.human_considered=False
+
+    def stop(self,reason='Stopped'):
+        self.enabled=False;self.phase='off';self.reason=reason;self.plan=None;self.waiting=None;self.early_spawn=None;self.recovery=None;self.release()
+
+    def recover(self,reason,now,reset=False,delay=.06):
+        """Stay armed, discard the route, then replan from distinct fresh frames.
+
+        Preserve pending DROP/HOLD evidence across focus/process interruptions.
+        A new capture geometry invalidates even that evidence. HOLD stays blocked
+        until a lock when we no longer know if this piece has used its exchange.
+        """
+        if not self.enabled:return
+        if self.recovery is not None and not reset:return
+        self.release();self.plan=None;self.early_spawn=None;self.planning_key=None
+        if reset:
+            self.waiting=None;self.chain={'combo':0,'b2b':0}
+            self.hold_blocked=True;self.held_piece=None
+            self.failed_motion=None
+        elif self.waiting and self.waiting['action'] not in ('DROP','HOLD'):
+            self.waiting=None
+        self.revision+=1
+        self.recovery={'after':now+max(delay,.06*min(6,max(1,self.retries))),'stamp':None,'count':0,'frame':None}
+        self.phase='recover';self.reason=reason
+
+    def resync_action(self,reason,now,state):
+        q=self.waiting
+        if q['action'] in ('L','R','CW','CCW') and state['board']==q['board'] and state['piece']==q['piece'] and state['queue']==q['queue']:
+            context=self.motion_context(state)
+            old=self.failed_motion
+            count=old['count']+1 if old and old['context']==context and old['action']==q['action'] else 1
+            self.failed_motion={'context':context,'action':q['action'],'count':count}
+        if q['action']=='HOLD':
+            # Shift may have been ignored or its confirmation missed. Do not
+            # swap again; place the actual visible piece and read HOLD afresh.
+            self.hold_blocked=True;self.held_piece=None
+        if state['board']!=q.get('before_board',q['board']) or state['queue']!=q['queue']:
+            self.chain={'combo':0,'b2b':0}
+        self.waiting=None;self.retries+=1
+        self.recover(reason,now)
+
+    def update(self,now,state,advice,frame_at,focused,source='pixels',ambiguous=0,pause_reason=None,spawn_age_ms=None):
+        if not self.enabled:return
+        if now<self.started:return
+        if pause_reason or not focused:
+            self.early_spawn=None
+            if self.paused_at is None:self.paused_at=now;self.release()
+            self.phase='paused';self.reason=pause_reason or 'Game unfocused; waiting';return
+        if self.paused_at is not None:
+            self.paused_at=None;self.last_seen=now
+            self.recovery=None
+            self.recover('Focus restored; verifying field',now)
+        observed=source in ('pixels','partial','fragments')
+        if not state or ambiguous or source not in ('pixels','partial','fragments','next') or now-frame_at>.12:
+            if self.recovery:self.recovery.update(stamp=None,count=0,frame=None)
+            if now-self.last_seen>.65:
+                self.phase='vision';self.reason='Pose unavailable; check field'
+            return
+        if observed:self.early_spawn=None
+        self.last_seen=now
+        if self.recovery is not None:
+            r=self.recovery
+            if not observed or frame_at<=r['after'] or not fits(state['board'],state['piece'],state['start']):return
+            stamp=(state['board'],state['piece'],state['queue'],state.get('generation'),state['start']['x'],state['start']['r'])
+            if stamp!=r['stamp'] or r['frame'] is not None and frame_at-r['frame']>.12:
+                r.update(stamp=stamp,count=0,frame=None)
+            if r['frame']==frame_at:return
+            r['count']+=1;r['frame']=frame_at
+            if r['count']<3:return
+            self.recovery=None;self.revision+=1;self.phase='verify' if self.waiting else 'ready'
+            self.reason='Field verified; new route'
+            return
+        if self.waiting:
+            q=self.waiting
+            if frame_at<=q['at']+.015:return
+            if q['action']=='HOLD':
+                if not observed:self.phase='verify';self.reason='Verifying HOLD';return
+                queue_ok=q['old_hold'] is not None or state['queue'][:2]==q['queue'][1:3]
+                if state['piece']==q['expected'] and queue_ok and (state['board']==q['board'] or garbage_shift(q['board'],state['board'])):
+                    self.plan=None;self.waiting=None;self.planning_key=None;self.phase='ready';self.reason='HOLD confirmed; planning';return
+                if now-q['at']>.7:self.resync_action('HOLD missed; using visible piece',now,state)
+                return
+            if q['action']=='DROP':
+                # Never drop the same piece twice: await a verified new board
+                # and a new active piece/preview generation.
+                changed=state.get('generation')!=q['generation'] or state['queue']!=q['queue']
+                if not observed:
+                    n=min(3,len(q['queue'])-1,len(state['queue']))
+                    known_next=n>=2 and state['piece']==q['queue'][0] and state['queue'][:n]==q['queue'][1:n+1] and state['queue']!=q['queue']
+                    if not known_next:return
+                if changed:
+                    if state['board']==q['board'] or garbage_shift(q['board'],state['board']):
+                        self.chain={k:q['chain'][k] for k in ('combo','b2b')};self.placed+=1
+                        self.hold_blocked=False;self.held_piece=None;self.retries=0
+                        self.human_considered=False
+                        if not observed and spawn_age_ms is not None and spawn_age_ms<=180:
+                            self.early_spawn={k:state[k] for k in ('board','piece','queue','generation')}
+                        self.plan=None;self.waiting=None;self.phase='ready';self.reason='Lock + NEXT confirmed' if not observed else 'Lock confirmed'
+                        return
+                    if not observed:self.reason='NEXT known; checking stack';return
+                    # A real next-piece transition may include a garbage change
+                    # the prediction cannot model. Require three distinct stable
+                    # pixel frames before accepting the observed stack instead.
+                    if state['queue']!=q['queue'] and q['queue'] and state['piece']==q['queue'][0]:
+                        stamp=(state['board'],state['piece'],state.get('generation'),state['queue'])
+                        if q.get('observed')!=stamp:q['observed']=stamp;q['stable']=0;q['frame']=None
+                        if q.get('frame')!=frame_at:q['stable']+=1;q['frame']=frame_at
+                        if q['stable']>=3:
+                            self.chain={'combo':0,'b2b':0};self.plan=None;self.waiting=None;self.planning_key=None
+                            self.hold_blocked=False;self.held_piece=None
+                            self.human_considered=False
+                            self.phase='ready';self.reason='New piece; synchronizing field';return
+                        self.reason='Verifying changed field';return
+                    self.resync_action('Stack changed; replanning',now,state);return
+            else:
+                # A predicted spawn must never acknowledge our own key press.
+                if not observed:self.phase='verify';self.reason='Early move; verifying pose';return
+                if state['board']!=q['board'] or state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or state['queue']!=q['queue']:
+                    self.plan=None;self.waiting=None;self.phase='ready';self.reason='Field changed; replanning';return
+                actual=cells(state['piece'],state['start']);before=q['cells']
+                if actual!=before:
+                    oldx=min(x for x,y in before);newx=min(x for x,y in actual)
+                    if q['action'] in ('L','R'):
+                        delta=-1 if q['action']=='L' else 1
+                        valid=newx-oldx==delta and self.shape(actual)==self.shape(before)
+                    else:
+                        # The bitmap cannot disambiguate 0/2 of I/S/Z. Compare
+                        # the rotated normalized shape, allowing wall kicks.
+                        target=(q['rotation']+(1 if q['action']=='CW' else -1))%4
+                        valid=self.shape(actual)==self.shape(SHAPES[q['piece']][target])
+                    if valid:
+                        self.plan['index']+=1;self.waiting=None;self.phase='moving';self.retries=0;self.failed_motion=None;return
+            if now-q['at']>.45:
+                self.resync_action(q['action']+' unconfirmed; replanning',now,state)
+            return
+        early=not observed and self.early_spawn is not None and all(state.get(k)==v for k,v in self.early_spawn.items()) and spawn_age_ms is not None and spawn_age_ms<=180
+        if not observed and not early:
+            self.phase='vision';self.reason=f"{state['piece']} from NEXT; waiting for pose";return
+        if self.plan and (state['board']!=self.plan['board'] or state['piece']!=self.plan['piece']):
+            self.plan=None;self.reason='Stack changed; replanning'
+        if not self.pace_ready(now):
+            self.phase='pacing';self.reason='Tempo';return
+        if not self.plan:
+            if state.get('controllerRevision',self.revision)!=self.revision:return
+            if not advice or advice['state']!=state:return
+            if state.get('chain',self.chain)!=self.chain:return
+            planning_key=(tuple(tuple(r) for r in state['board']),state['piece'],state.get('generation'))
+            if planning_key!=self.planning_key:self.planning_key=planning_key;self.planning_at=now
+            wait_budget=.02 if advice['candidate'].get('auto',{}).get('mode')=='survive' else .04
+            if advice['stage']=='fast' and now-self.planning_at<wait_budget:
+                self.reason='Refining with NEXT';return
+            c=advice['candidate']
+            failed=self.failed_motion
+            if failed and failed['count']>=2 and failed['context']==self.motion_context(state):
+                # If the same observed move fails twice, try another reachable
+                # placement whose first action avoids that move/rotation.
+                for alternative in advice.get('candidates',[]):
+                    first='HOLD' if alternative.get('useHold') else next((a for a in alternative['path'] if a!='D'),'DROP')
+                    if first!=failed['action']:
+                        c=alternative;break
+            path=list(c['path'])
+            if c.get('useHold'):
+                if self.hold_blocked or not state.get('allowHold') or state.get('canHold') is False:return
+                expected=state.get('hold') or (state['queue'][0] if state['queue'] else None)
+                if not expected or expected==state['piece']:return
+                if not self.send('HOLD',now):self.recover('HOLD input failed; replanning',now);return
+                self.early_spawn=None
+                self.hold_blocked=True;self.held_piece=state['piece']
+                self.waiting={'action':'HOLD','at':now,'expected':expected,'old_hold':state.get('hold'),'board':state['board'],'queue':state['queue']}
+                self.phase='verify';self.reason='Verifying HOLD';return
+            while path and path[-1]=='D':path.pop()
+            if any(a not in ('L','R','CW','CCW') for a in path):self.reason='Waiting for a hard-drop route';return
+            prefix=self.human_prefix(state,c,observed)
+            self.plan={'piece':state['piece'],'board':state['board'],'target':cells(c['piece'],c['pos']),
+                       'actions':prefix+path+['DROP'],'human_prefix':len(prefix),'index':0,'result':c['board'],'chain':c.get('chain',{'combo':0,'b2b':0}),
+                       'auto':c.get('auto',{}),'intent':c.get('intent'),'comboPlan':c.get('comboPlan',0)}
+        p=self.plan;action=p['actions'][p['index']]
+        if p['index']<p.get('human_prefix',0):
+            shifted=dict(state['start'],x=state['start']['x']+(-1 if action=='L' else 1))
+            if not observed or not fits(state['board'],state['piece'],shifted):
+                self.recover('Sidestep blocked; replanning',now);return
+        if action=='DROP':
+            if not observed:self.phase='vision';self.reason='Verifying pose before DROP';return
+            landed=landing(state['board'],state['piece'],state['start'])
+            if not landed or cells(state['piece'],landed)!=p['target']:
+                self.plan=None;self.reason='Pose changed; replanning DROP';return
+        if not self.send(action,now):self.recover('Input failed; replanning',now);return
+        self.early_spawn=None
+        self.waiting={'action':action,'at':now,'piece':state['piece'],'cells':cells(state['piece'],state['start']),
+                      'rotation':state['start']['r'],'board':p['result'] if action=='DROP' else state['board'],
+                      'queue':state['queue'],'generation':state.get('generation'),'chain':p['chain'],'before_board':state['board']}
+        self.phase='verify';self.reason=('Early NEXT move: ' if early else 'Verifying ')+action
+
+    @staticmethod
+    def motion_context(state):
+        return (state['board'],state['piece'],state['queue'],state['start']['x'],state['start']['r'])
+
+    @staticmethod
+    def shape(points):
+        mx=min(x for x,y in points);my=min(y for x,y in points)
+        return sorted((x-mx,y-my) for x,y in points)

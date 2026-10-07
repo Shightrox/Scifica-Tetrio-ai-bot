@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+*.log.*
+settings.json
+settings.tmp
+reference.png
+work/
+.env
+.env.*
+.DS_Store
+Thumbs.db
+README.txt
