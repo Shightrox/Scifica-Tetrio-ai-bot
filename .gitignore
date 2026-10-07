@@ -12,3 +12,6 @@ work/
 .DS_Store
 Thumbs.db
 README.txt
+build/
+dist/
+*.spec

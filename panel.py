@@ -1,6 +1,7 @@
 """Compact Tk control surface; gameplay and capture remain in Overlay."""
 import tkinter as tk
 import preferences
+from app_runtime import VERSION
 
 BG = '#0c1119'
 PANEL = '#131c29'
@@ -63,7 +64,7 @@ def build(app, root_path):
     body=tk.Frame(shell,bg=BG);body.pack(fill='both',expand=True,padx=20,pady=(18,12))
     wordmark=tk.Frame(body,bg=BG);wordmark.pack(fill='x')
     tk.Label(wordmark,text='SCIFICA',font=(FONT,27,'bold'),fg=FG,bg=BG).pack(side='left')
-    tk.Label(wordmark,text='v0.15\nVISION / SEARCH / PLAY',justify='right',font=(FONT,8),fg=MUTED,bg=BG).pack(side='right')
+    tk.Label(wordmark,text=f'v{VERSION}\nVISION / SEARCH / PLAY',justify='right',font=(FONT,8),fg=MUTED,bg=BG).pack(side='right')
     tk.Label(body,text='[] [] [] []   LOCAL TETRIO AI',font=(FONT,9),fg=ACCENT,bg=BG).pack(anchor='w',pady=(0,14))
     def section(text):
         row=tk.Frame(body,bg=BG);row.pack(fill='x',pady=(10,8))

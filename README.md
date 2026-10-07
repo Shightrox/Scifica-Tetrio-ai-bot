@@ -36,6 +36,16 @@ No browser extension, game-process injection, remote inference or API key is req
 
 ## Run it
 
+### Windows executable
+
+Download **`Scifica-0.15.1-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
+
+Requires **64-bit Windows 10 2004+ or Windows 11**. The executable opens the desktop pilot; the optional browser sandbox remains available from source. Settings and logs live in `%LOCALAPPDATA%\Scifica`, outside the executable's temporary extraction directory. The first launch may take a few seconds to unpack.
+
+Each release includes `SHA256SUMS.txt`, build versions and third-party license notices. See [building the EXE](docs/windows-build.md) for the reproducible build procedure.
+
+### From source
+
 The live overlay requires **Windows 10 2004+ or Windows 11**, **Python 3.10+ with Tcl/Tk**, and **Node.js 22+ on PATH**. Use a normal windowed or borderless game window.
 
 ```sh
@@ -79,7 +89,7 @@ Expected game bindings: **Left / Right** move, **Z** counterclockwise, **X** clo
 
 Humanization defaults to **0%**. Extra movement is skipped for high stacks, low clearance, inferred-only poses and recovery attempts. It never randomly drops, holds or rotates. A failed detour triggers replanning from the observed position. It is a movement-style option, not a guarantee of human-like play.
 
-Preferences are stored locally in `settings.json`; capture rectangles and armed state are not persisted. Opening the panel pauses input through the focus guard. Use **Return to game** to continue. Minimizing the panel keeps the overlay running.
+Preferences are stored in `settings.json` (beside the source, or under `%LOCALAPPDATA%\Scifica` for the EXE); capture rectangles and armed state are not persisted. Opening the panel pauses input through the focus guard. Use **Return to game** to continue. Minimizing the panel keeps the overlay running.
 
 ## How it thinks
 

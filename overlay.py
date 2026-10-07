@@ -10,7 +10,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import queue
-import shutil
 import subprocess
 import threading
 import time
@@ -18,12 +17,13 @@ import tkinter as tk
 from tkinter import messagebox
 from autoplay import AutoPlayer
 from game_input import GameInput
+from app_runtime import RESOURCE_ROOT, data_directory, node_executable
 
 from overlay_vision import Reader, SHAPES, detect
 from field_geometry import GeometryGuard, capture_bounds, overlaps, panel_position
 from win_capture import Capture, user, virtual_screen, monitor_work_areas, dpi_aware, hwnd, exclude, click_through, title
 
-ROOT=Path(__file__).resolve().parent
+ROOT=RESOURCE_ROOT
 BG='#0c1119'; FG='#e1eaf5'; GREEN='#72e6d0'; KEY='#010203'
 
 def newest(q,value):
@@ -48,11 +48,14 @@ class Overlay:
         self.timer_api=C.WinDLL('winmm')
         self.timer_raised=self.timer_api.timeBeginPeriod(1)==0
         self.root=tk.Tk();self.root.title('Scifica — Tetrio AI Bot')
+        icon=ROOT/'assets/scifica.ico'
+        if icon.is_file():self.root.iconbitmap(str(icon))
         self.root.configure(bg=BG);self.root.resizable(False,False)
         self.root.geometry('470x760')
         self.root.attributes('-topmost',True)
+        self.data_dir=data_directory()
         self.events=logging.getLogger('tetris-autoplay');self.events.setLevel(logging.INFO)
-        handler=RotatingFileHandler(ROOT/'autoplay-events.log',maxBytes=500000,backupCount=1,encoding='utf-8')
+        handler=RotatingFileHandler(self.data_dir/'autoplay-events.log',maxBytes=500000,backupCount=1,encoding='utf-8')
         handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'));self.events.addHandler(handler)
         self.last_player_status=None
         self.stop=threading.Event();self.frames=queue.Queue(maxsize=1);self.answers=queue.Queue()
@@ -66,8 +69,7 @@ class Overlay:
         self.player=AutoPlayer(self.game_input.tap,self.game_input.release)
         self.live_state=None;self.last_image_at=0;self.ambiguity=0;self.garbage_seen=0
         self.selector=None;self.reader_epoch=0;self.control_visible=True;self.hotkeys=[];self.key_events=queue.Queue()
-        node=shutil.which('node')
-        if not node:raise RuntimeError('Node.js not found. Install Node.js 22 or newer and restart Scifica.')
+        node=node_executable()
         self.node=node;self.solver_generation=0;self.solver_retry_at=None;self.solver_failures=0
         self.start_solver()
         self.vx,self.vy,self.vw,self.vh=virtual_screen()
@@ -111,7 +113,7 @@ class Overlay:
 
     def setup_controls(self):
         import panel
-        panel.build(self, ROOT)
+        panel.build(self, self.data_dir)
 
     def hide_controls(self):
         self.control_visible=False;self.root.withdraw()
@@ -492,6 +494,10 @@ class Overlay:
     def run(self):self.root.mainloop()
 
 if __name__=='__main__':
+    import sys
+    if len(sys.argv)==3 and sys.argv[1]=='--smoke-test':
+        from release_smoke import run
+        raise SystemExit(run(Path(sys.argv[2])))
     try:Overlay().run()
     except Exception as exc:
         try:messagebox.showerror('Scifica',str(exc))
