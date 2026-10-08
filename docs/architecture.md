@@ -61,7 +61,9 @@ No search quality is traded for humanization. These controls do not change AUTO'
 
 ## UI and local data
 
-`panel.py` draws the title bar, square sliders and compact status surface. The native window procedure removes non-client framing while keeping normal taskbar/minimize behavior. The overlay is a separate, non-activating, click-through window excluded from capture. Only explicit setup may initially place the controls away from the field; recalibration leaves their position intact.
+`panel.py` draws the title bar, square sliders and compact status surface. `window_chrome.py` uses Tk's [borderless window mode](https://www.tcl-lang.org/man/tcl8.7/TkCmd/wm.html) so Tk and Windows agree about the client dimensions. Dragging coalesces pointer positions at an 8 ms interval and calls [SetWindowPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) with NOSIZE, NOZORDER and NOACTIVATE. Mouse release flushes the final position. This avoids the old combination of repeated Tk geometry requests and intercepted non-client size messages, which could shrink and corrupt the panel while dragging. Native styles retain the taskbar entry and minimize/restore behavior; minimized controls do not count as field overlap.
+
+The overlay is a separate, non-activating, click-through window excluded from capture. Only explicit setup may initially place the controls away from the field; recalibration leaves their position intact.
 
 `server.py` binds to loopback only. Its launch endpoint checks origin, content type and a custom header. The browser sandbox shares the search engine but uses its own animation and a simpler image reader; it is not the native live-vision pipeline. Native capture frames remain in memory. Local rotating logs record controller status, not screenshot files.
 
@@ -70,6 +72,7 @@ Main files:
 | File | Responsibility |
 | --- | --- |
 | `overlay.py`, `panel.py` | Orchestration, overlay drawing, desktop controls |
+| `window_chrome.py` | Borderless frame, coalesced native dragging, minimize/restore |
 | `win_capture.py` | DIB capture, window helpers, exclusion |
 | `overlay_vision.py`, `block_vision.py`, `notice_vision.py` | Temporal field reading, block structure, text filtering |
 | `field_geometry.py` | Grid proposals and stable calibration |

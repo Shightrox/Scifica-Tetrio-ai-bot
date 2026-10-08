@@ -45,22 +45,14 @@ def build(app, root_path):
     titlebar.pack(fill='x'); titlebar.pack_propagate(False)
     title = tk.Label(titlebar, text='[S]  SCIFICA / TETRIO AI BOT', bg=PANEL, fg=FG, font=(FONT, 10, 'bold'))
     title.pack(side='left', padx=14)
-    def begin_drag(event):
-        app._drag = (event.x_root, event.y_root, root.winfo_x(), root.winfo_y())
-    def drag(event):
-        if hasattr(app, '_drag'):
-            x,y,rx,ry=app._drag
-            root.geometry(f'{rx+event.x_root-x:+d}{ry+event.y_root-y:+d}')
-    for widget in (titlebar,title):
-        widget.bind('<ButtonPress-1>',begin_drag)
-        widget.bind('<B1-Motion>',drag)
+    app.window_chrome.bind(titlebar, title)
     def button(parent, text, command, accent=False, **kwargs):
         return tk.Button(parent, text=text, command=command, font=(FONT,10,'bold'),
                          bg=ACCENT if accent else PANEL, fg=BG if accent else FG,
                          activebackground=AMBER if accent else LINE, activeforeground=BG if accent else FG,
                          relief='flat', bd=0, highlightthickness=0, cursor='hand2', padx=12, pady=9, **kwargs)
     button(titlebar,'X',app.close,width=2).pack(side='right',fill='y')
-    button(titlebar,'_',root.iconify,width=2).pack(side='right',fill='y')
+    button(titlebar,'_',app.window_chrome.minimize,width=2).pack(side='right',fill='y')
     body=tk.Frame(shell,bg=BG);body.pack(fill='both',expand=True,padx=20,pady=(18,12))
     wordmark=tk.Frame(body,bg=BG);wordmark.pack(fill='x')
     tk.Label(wordmark,text='SCIFICA',font=(FONT,27,'bold'),fg=FG,bg=BG).pack(side='left')

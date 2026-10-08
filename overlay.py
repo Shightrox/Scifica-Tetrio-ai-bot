@@ -17,6 +17,7 @@ import tkinter as tk
 from tkinter import messagebox
 from autoplay import AutoPlayer
 from game_input import GameInput
+from window_chrome import WindowChrome
 from app_runtime import RESOURCE_ROOT, data_directory, node_executable
 
 from overlay_vision import Reader, SHAPES, detect
@@ -48,6 +49,8 @@ class Overlay:
         self.timer_api=C.WinDLL('winmm')
         self.timer_raised=self.timer_api.timeBeginPeriod(1)==0
         self.root=tk.Tk();self.root.title('Scifica — Tetrio AI Bot')
+        self.root.withdraw()
+        self.window_chrome=WindowChrome(self.root)
         icon=ROOT/'assets/scifica.ico'
         if icon.is_file():self.root.iconbitmap(str(icon))
         self.root.configure(bg=BG);self.root.resizable(False,False)
@@ -85,24 +88,16 @@ class Overlay:
         self.root.update_idletasks()
         # Fixed status rows keep the panel stable when live telemetry changes.
         self.root.geometry(f'470x{self.root.winfo_reqheight()}')
+        self.root.deiconify()
+        self.window_chrome.configure()
         self.control_handle=hwnd(self.root)
         self.old_proc=user.GetWindowLongPtrW(self.control_handle,-4)
-        class StyleChange(C.Structure):
-            _fields_=[('old',W.DWORD),('new',W.DWORD)]
         @C.WINFUNCTYPE(C.c_ssize_t,C.c_void_p,W.UINT,W.WPARAM,W.LPARAM)
         def window_proc(handle,message,wp,lp):
-            if message==0x83:return 0 # WM_NCCALCSIZE: custom client title bar
-            if message==0x85:return 0 # WM_NCPAINT: no classic caption on focus changes
-            if message==0x86:return 1 # WM_NCACTIVATE: retain custom client chrome
-            if message==0x7c and (wp & 0xffffffff)==0xfffffff0: # GWL_STYLE
-                C.cast(lp,C.POINTER(StyleChange)).contents.new &= ~0x00c40000
             if message==0x312:self.key_events.put(int(wp));return 0
             return user.CallWindowProcW(self.old_proc,handle,message,wp,lp)
         self.window_proc=window_proc
         user.SetWindowLongPtrW(self.control_handle,-4,C.cast(window_proc,C.c_void_p).value)
-        style=user.GetWindowLongPtrW(self.control_handle,-16)
-        user.SetWindowLongPtrW(self.control_handle,-16,style & ~0x00c40000)
-        user.SetWindowPos(self.control_handle,None,0,0,0,0,0x37)
         for ident,vk in ((1,0x77),(2,0x78),(3,0x79),(4,0x76)): # Ctrl+Alt+F7..F10
             if user.RegisterHotKey(self.control_handle,ident,0x4003,vk):self.hotkeys.append(ident)
         if len(self.hotkeys)!=4:self.status.set('Some hotkeys are already in use. Use the panel.')
@@ -119,7 +114,7 @@ class Overlay:
         self.control_visible=False;self.root.withdraw()
 
     def show_controls(self):
-        self.control_visible=True;self.root.deiconify();self.root.lift()
+        self.control_visible=True;self.window_chrome.restore()
 
     def focus_game(self):
         if self.target and user.IsWindow(self.target):
@@ -135,7 +130,7 @@ class Overlay:
         if pos:user.SetWindowPos(handle,None,int(pos[0]),int(pos[1]),0,0,0x15) # no activation or z-order change
 
     def panel_overlaps_capture(self):
-        if not self.control_visible or not self.root.winfo_viewable() or not self.region:return False
+        if not self.control_visible or not self.root.winfo_viewable() or not self.region or user.IsIconic(self.control_handle):return False
         b=W.RECT();user.GetWindowRect(hwnd(self.root),C.byref(b))
         return overlaps((b.left,b.top,b.right,b.bottom),capture_bounds(self.region))
 
@@ -480,6 +475,7 @@ class Overlay:
         self.canvas.create_text(bx+10,by+117,text=f"Locks {self.player.placed} · combo {self.player.chain['combo']} · B2B quad {self.player.chain['b2b']} · garbage ↑{self.garbage_seen}",fill='#abbcaf',anchor='nw',font=('Segoe UI',8))
 
     def close(self):
+        self.window_chrome.cancel_drag()
         if self.stop.is_set():return
         self.save_preferences()
         self.stop.set()
