@@ -73,6 +73,7 @@ def build(app, root_path):
     app.humanization=tk.DoubleVar(value=saved['humanization'])
     app.use_hold=tk.BooleanVar(value=saved['use_hold'])
     app.swap_rotation=tk.BooleanVar(value=saved['swap_rotation'])
+    app.attack_priority=tk.BooleanVar(value=saved['attack_priority'])
     app._save_job=None
     def save_settings():
         app._save_job=None
@@ -80,7 +81,7 @@ def build(app, root_path):
         except OSError: app.status.set('Settings could not be saved.')
     def values():
         return dict(key_rate=app.key_rate.get(),humanization=app.humanization.get(),
-                    use_hold=app.use_hold.get(),swap_rotation=app.swap_rotation.get())
+                    use_hold=app.use_hold.get(),swap_rotation=app.swap_rotation.get(),attack_priority=app.attack_priority.get())
     def changed(*args):
         app.player.configure(app.key_rate.get(),app.humanization.get())
         app.player.vk.update(CW=0x5a if app.swap_rotation.get() else 0x58,CCW=0x58 if app.swap_rotation.get() else 0x5a)
@@ -103,6 +104,13 @@ def build(app, root_path):
         tk.Checkbutton(toggles,text=text,variable=var,command=changed,bg=BG,fg=FG,selectcolor=PANEL,
                        activebackground=BG,activeforeground=ACCENT,font=(FONT,9),bd=0,highlightthickness=0).pack(side='left',padx=(0,16))
     section('03 / PILOT')
+    attack_row=tk.Frame(body,bg=BG);attack_row.pack(fill='x',pady=(0,8))
+    def strategy_changed():
+        app.change_attack_priority();changed()
+    tk.Checkbutton(attack_row,text='Attack priority',variable=app.attack_priority,command=strategy_changed,
+                   bg=BG,fg=FG,selectcolor=PANEL,activebackground=BG,activeforeground=ACCENT,
+                   font=(FONT,9),bd=0,highlightthickness=0).pack(side='left')
+    tk.Label(attack_row,text='PC / B2B / clear chains',font=(FONT,8),bg=BG,fg=MUTED).pack(side='right')
     row=tk.Frame(body,bg=BG);row.pack(fill='x')
     app.auto_button=button(row,'[>] Start autopilot',app.toggle_autoplay,True)
     app.auto_button.pack(side='left',fill='x',expand=True,padx=(0,6))

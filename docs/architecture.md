@@ -14,7 +14,11 @@ The native reader samples a 10 × 20 field plus four rows above it, NEXT to the 
 
 `engine.js` enumerates reachable placements using SRS rotation kicks. Native requests restrict routes to moves the controller can execute: lateral movement and 90° rotations before hard drop. HOLD branches use the held piece or the known queue head, respecting the once-per-piece exchange.
 
-`overlay-solver.cjs` stays alive over JSON-lines IPC. It provides a shallow answer, then a limited deeper search (normally three pieces, eight root candidates, beam width three). Cached continuations must match the board and queue; the current pose is rerouted rather than assumed unchanged. A worker identity and request key reject stale answers.
+`overlay-solver.cjs` stays alive over JSON-lines IPC. It provides a shallow answer, then a limited deeper search (balanced: three pieces, eight roots; attack priority: four pieces, six roots; beam width three). The cache identity includes the full observed queue, HOLD availability and attack setting. Cached continuations must match the board and queue; the current pose is rerouted rather than assumed unchanged. A worker identity and request key reject stale answers.
+
+When attack priority is enabled, `perfect-clear.cjs` first attempts a low-field PC over at most six known placements. It uses bottom-up row bitmasks, deduplicated rotations, straight-drop landings, cell-count divisibility and failed-state memoization. Search stops at 12,000 visited states or a 24 ms time budget; root enumeration and final validation add a small amount of work outside that budget. Every found sequence is independently replayed through the ordinary SRS placement engine before it is eligible for selection. If the PC candidate scores worse than the fast alternative, the ordinary deeper search proceeds instead.
+
+PC continuations retain expected boards, active/HOLD pieces, chain state and known queue prefixes. Newly revealed preview tails are allowed; conflicting known pieces are not. Every reused landing is rerouted from the current observed pose. A predicted HOLD has a separate post-exchange continuation, so the replacement piece does not lose the PC plan. Risen garbage, mismatched chains, unavailable HOLD or strategy changes reject reuse. The first answer and input verification stay on their existing paths.
 
 The pilot normally gives a shallow result up to 40 ms for refinement, reduced to 20 ms under survival pressure. This is a refinement budget, not a promise about total latency. Verified deep answers can be used immediately.
 
@@ -29,6 +33,8 @@ The pilot normally gives a shallow result up to 40 ms for refinement, reduced to
 Exact triggers live in `autoPolicy()` in `engine.js`. Every intermediate board is penalized for new holes, burial and dangerous growth. A prepared I-piece well earns setup credit only when an I is known in available HOLD or the short preview. Setup reward is capped at four layers and removed in survival mode. A promising preparation branch can be retained in the beam; it is not rewarded once per search step.
 
 The evaluator tracks approximate combo/B2B state after verified locks. Consecutive clears can justify a temporary local cost when a reachable continuation removes it. Unmodeled board transitions reset the chain instead of pretending the attack history is known. No room-specific attack-cancellation model or spin detector is present.
+
+Attack priority adds weight to estimated garbage and attack per searched piece while reducing the incentive to skim low-value singles. The estimate now includes a combo floor for successive singles. A capped B2B reserve is valued once at the search leaf; competing narrow wells are penalized because they demand extra I pieces. All of these extra incentives are disabled for a state already in survival mode. They can resume after downstacking removes the danger. See [research and benchmarks](attack-priority.md).
 
 ## Closed-loop input
 
@@ -77,6 +83,7 @@ Main files:
 | `overlay_vision.py`, `block_vision.py`, `notice_vision.py` | Temporal field reading, block structure, text filtering |
 | `field_geometry.py` | Grid proposals and stable calibration |
 | `engine.js`, `overlay-solver.cjs` | Reachability, evaluation, lookahead, warm worker |
+| `perfect-clear.cjs` | Budgeted bitboard PC search, SRS validation, continuation proof |
 | `autoplay.py`, `game_input.py` | Feedback controller and guarded key taps |
 | `preferences.py` | Validated local settings |
 | `app.js`, `vision.js`, `worker.js` | Browser sandbox and image inspector |

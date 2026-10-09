@@ -88,7 +88,11 @@
     const combo=c.lines?(chain.combo||0)+1:0;
     const difficult=c.lines>0&&(c.lines===4||c.perfectClear);
     const b2b=difficult?(chain.b2b||0)+1:c.lines?0:(chain.b2b||0);
-    const attack=([0,0,1,2,4][c.lines]+(difficult&&chain.b2b?1:0))*(1+.25*Math.max(0,combo-1));
+    const comboIndex=Math.max(0,combo-1);
+    const base=[0,0,1,2,4][c.lines]+(difficult&&chain.b2b?1:0);
+    // Include the combo floor: a chain of singles is not always zero attack.
+    // PC and Surge are separate additions, outside the combo multiplier.
+    const attack=c.lines?Math.floor(Math.max(base*(1+.25*comboIndex),Math.log1p(1.25*comboIndex))):0;
     const surge=c.lines&&!difficult&&(chain.b2b||0)>=4?chain.b2b:0;
     const bonus=8*attack+Math.min(12,Math.max(0,combo-1)*2)+(c.perfectClear?40:0)+surge*6+(c.garbageCleared||0)*4;
     return {reward:profile==='versus'?5*c.lines+bonus:9*c.lines,combo,b2b,attackEstimate:attack+(c.perfectClear?5:0)+surge};
@@ -102,13 +106,15 @@
     }
     return out;
   }
-  function evaluate(c,before,chain,profile,simpleOnly,allowHold){
+  function evaluate(c,before,chain,profile,simpleOnly,allowHold,attackPriority=false){
     c.chain=tactical(c,chain,profile);
-    const m=c.metrics;c.auto=autoPolicy(before);
+    const m=c.metrics;c.auto=autoPolicy(before);c.attackPriority=!!attackPriority;
     const danger=c.auto.mode==='survive',attack=c.auto.mode==='attack';
     const damage=c.chain.reward-5*c.lines;
     const newHoles=Math.max(0,m.holes-before.holes),newCover=Math.max(0,m.garbageCover-before.garbageCover);
     c.stepReward=profile==='versus'?(danger?8:5)*c.lines+damage*(danger?.55:attack?1.3:1.1):c.chain.reward;
+    const pressure=attackPriority&&profile==='versus'&&!danger;
+    if(pressure)c.stepReward+=c.chain.attackEstimate*(attack?12:6)-2*c.lines;
     if(profile==='versus'&&!danger&&c.lines&&chain.combo)c.stepReward+=Math.min(12,4+chain.combo*2)*(attack?1:.5);
     // These costs apply to every intermediate board, not just the search leaf.
     c.stepReward-=newHoles*8+Math.max(0,m.buried-before.buried)*.5+newCover*3;
@@ -123,13 +129,19 @@
     c.safety=danger?'downstack':'balanced';
     c.setup=profile==='versus'?setupPotential(m,c.nextQueue,c.newHold,allowHold):0;
     c.terminal=positionValue(m,c.nextQueue,c.newHold,allowHold,profile);
+    if(pressure){
+      // Value a banked B2B chain once at the leaf, not on every empty lock.
+      // A second deep, narrow well competes for the I needed to attack.
+      const forcedI=m.heights.reduce((n,h,x)=>n+(x===m.well?0:Math.max(0,Math.min(x?m.heights[x-1]:H,x<W-1?m.heights[x+1]:H)-h-2)),0);
+      c.terminal+=Math.min(8,c.chain.b2b)*2-forcedI*4;
+    }
     c.score=c.terminal+c.stepReward+(c.nextSafe?0:-1000000);
     return c;
   }
-  function analyze({board,piece,queue=[],hold=null,start=null,depth=2,allowHold=true,canHold=true,rootLimit=12,beamWidth=5,simpleOnly=false,profile='classic',chain={combo:0,b2b:0}}){
+  function analyze({board,piece,queue=[],hold=null,start=null,depth=2,allowHold=true,canHold=true,rootLimit=12,beamWidth=5,simpleOnly=false,profile='classic',chain={combo:0,b2b:0},attackPriority=false}){
     const before=metrics(board);
     const options=choices(board,piece,queue,hold,start,simpleOnly,allowHold&&canHold);
-    for(const c of options)evaluate(c,before,chain,profile,simpleOnly,allowHold);
+    for(const c of options)evaluate(c,before,chain,profile,simpleOnly,allowHold,attackPriority);
     options.sort((a,b)=>b.score-a.score);
     const roots=options.slice(0,rootLimit),total=options.length;
     // Preserve at least one alternative from both HOLD branches when pruning.
@@ -153,13 +165,13 @@
           if(!state.queue.length){next.push({...state,rank:state.value+state.terminal});continue;}
           const ps=choices(state.board,state.queue[0],state.queue.slice(1),state.hold,null,simpleOnly,allowHold);
           const previous=metrics(state.board);
-          for(const p of ps){evaluate(p,previous,state.chain,profile,simpleOnly,allowHold);p.rank=p.score;}
+          for(const p of ps){evaluate(p,previous,state.chain,profile,simpleOnly,allowHold,attackPriority);p.rank=p.score;}
           ps.sort((a,b)=>b.rank-a.rank);
           for(const p of ps.slice(0,beamWidth)){
             if(!p.nextSafe)continue;
             const value=state.value+p.stepReward*Math.pow(.9,d);
             next.push({board:p.board,value,terminal:p.terminal,chain:p.chain,queue:p.nextQueue,hold:p.newHold,
-              future:[...state.future,{piece:p.piece,pos:p.pos,board:p.board,lines:p.lines,useHold:p.useHold,perfectClear:p.perfectClear,combo:p.chain.combo,b2b:p.chain.b2b}],rank:value+p.terminal});
+              future:[...state.future,{piece:p.piece,pos:p.pos,board:p.board,lines:p.lines,useHold:p.useHold,perfectClear:p.perfectClear,combo:p.chain.combo,b2b:p.chain.b2b,attackEstimate:p.chain.attackEstimate}],rank:value+p.terminal});
           }
         }
         if(!next.length){beam=[];break;}
@@ -172,10 +184,13 @@
         :best>=Math.max(2,(chain.combo||0)+1)?'combo':sequence.some(p=>p.lines===4)?'quad'
         :c.setup>=8?'prepare-quad':'clean-stack';
       c.comboPlan=best;
+      c.attackPlan=c.chain.attackEstimate+c.future.reduce((sum,p)=>sum+p.attackEstimate,0);
+      c.attackPerPiece=c.attackPlan/c.lookahead;
+      if(attackPriority&&profile==='versus'&&c.auto.mode!=='survive')c.value+=c.attackPerPiece*10;
     }
     roots.sort((a,b)=>b.value-a.value||Number(a.useHold)-Number(b.useHold)||a.path.length-b.path.length);
     return {candidates:roots.slice(0,3),total,before};
   }
-  const api={W,H,BASE,SHAPES,empty,clone,spawn,entry,fits,move,lock,metrics,placements,analyze,tactical,autoPolicy,setupPotential};
+  const api={W,H,BASE,SHAPES,empty,clone,spawn,entry,fits,move,lock,metrics,placements,analyze,tactical,autoPolicy,setupPotential,choices,evaluate};
   if(typeof module!=='undefined')module.exports=api;root.Tetris=api;
 })(typeof self!=='undefined'?self:globalThis);

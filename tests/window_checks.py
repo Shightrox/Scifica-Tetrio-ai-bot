@@ -114,8 +114,22 @@ def run():
             pump()
             assert bounds() == (50, 50, *start[2:])
             assert contents() == expected_layout
+            # A strategy change must replan without disarming or forgetting a
+            # hard drop whose acknowledgement has not arrived yet.
+            app.player.tap = lambda key: (_ for _ in ()).throw(AssertionError('unexpected game input'))
+            app.player.start(time.perf_counter())
+            pending_drop = {'action': 'DROP'}
+            app.player.waiting = pending_drop
+            app.advice = {'old': True}
+            revision = app.player.revision
+            app.change_attack_priority()
+            assert app.player.enabled and app.player.recovery
+            assert app.player.waiting is pending_drop and app.player.revision > revision
+            assert app.advice is None and app.live_state is None and app.job is None
+            app.player.stop('Check finished')
             print('PASS 40 drag cycles / 4,000 queued positions, exact release, negative x,')
             print('     title bindings, stable child layout, minimize/restore and taskbar styles')
+            print('PASS strategy change preserves pending DROP evidence and armed state while replanning')
         finally:
             app.close()
             for handler in list(app.events.handlers):

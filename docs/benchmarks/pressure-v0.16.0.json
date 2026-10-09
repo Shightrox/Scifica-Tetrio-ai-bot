@@ -1,0 +1,328 @@
+{
+  "baseline": "92a08bae90fecf9161e1144ecb3a0a2bc6a0405c",
+  "node": "v24.11.1",
+  "seeds": [
+    7,
+    19,
+    31,
+    53,
+    79,
+    101
+  ],
+  "turnsPerRun": 100,
+  "pcBudgetMs": 24,
+  "results": [
+    {
+      "garbage": false,
+      "seed": 7,
+      "before": {
+        "turns": 100,
+        "attack": 22,
+        "lines": 38,
+        "quads": 1,
+        "pcs": 1,
+        "pcHits": 0,
+        "maxHeight": 5,
+        "meanMs": 13.13,
+        "p95Ms": 17.63
+      },
+      "after": {
+        "turns": 100,
+        "attack": 37,
+        "lines": 38,
+        "quads": 1,
+        "pcs": 4,
+        "pcHits": 4,
+        "maxHeight": 6,
+        "meanMs": 15.38,
+        "p95Ms": 31.26
+      }
+    },
+    {
+      "garbage": false,
+      "seed": 19,
+      "before": {
+        "turns": 100,
+        "attack": 20,
+        "lines": 39,
+        "quads": 0,
+        "pcs": 1,
+        "pcHits": 0,
+        "maxHeight": 6,
+        "meanMs": 13.8,
+        "p95Ms": 18.05
+      },
+      "after": {
+        "turns": 100,
+        "attack": 40,
+        "lines": 39,
+        "quads": 0,
+        "pcs": 5,
+        "pcHits": 5,
+        "maxHeight": 4,
+        "meanMs": 14.82,
+        "p95Ms": 29.71
+      }
+    },
+    {
+      "garbage": false,
+      "seed": 31,
+      "before": {
+        "turns": 100,
+        "attack": 23,
+        "lines": 39,
+        "quads": 1,
+        "pcs": 1,
+        "pcHits": 0,
+        "maxHeight": 5,
+        "meanMs": 16.22,
+        "p95Ms": 22.2
+      },
+      "after": {
+        "turns": 100,
+        "attack": 46,
+        "lines": 40,
+        "quads": 2,
+        "pcs": 5,
+        "pcHits": 5,
+        "maxHeight": 7,
+        "meanMs": 15.33,
+        "p95Ms": 27.27
+      }
+    },
+    {
+      "garbage": false,
+      "seed": 53,
+      "before": {
+        "turns": 100,
+        "attack": 15,
+        "lines": 38,
+        "quads": 0,
+        "pcs": 0,
+        "pcHits": 0,
+        "maxHeight": 5,
+        "meanMs": 13.7,
+        "p95Ms": 19.17
+      },
+      "after": {
+        "turns": 100,
+        "attack": 33,
+        "lines": 39,
+        "quads": 0,
+        "pcs": 3,
+        "pcHits": 3,
+        "maxHeight": 5,
+        "meanMs": 16.67,
+        "p95Ms": 32.79
+      }
+    },
+    {
+      "garbage": false,
+      "seed": 79,
+      "before": {
+        "turns": 100,
+        "attack": 24,
+        "lines": 39,
+        "quads": 1,
+        "pcs": 1,
+        "pcHits": 0,
+        "maxHeight": 6,
+        "meanMs": 14.4,
+        "p95Ms": 18.89
+      },
+      "after": {
+        "turns": 100,
+        "attack": 36,
+        "lines": 39,
+        "quads": 1,
+        "pcs": 4,
+        "pcHits": 5,
+        "maxHeight": 5,
+        "meanMs": 15.81,
+        "p95Ms": 30.14
+      }
+    },
+    {
+      "garbage": false,
+      "seed": 101,
+      "before": {
+        "turns": 100,
+        "attack": 16,
+        "lines": 38,
+        "quads": 1,
+        "pcs": 0,
+        "pcHits": 0,
+        "maxHeight": 5,
+        "meanMs": 13.89,
+        "p95Ms": 19.97
+      },
+      "after": {
+        "turns": 100,
+        "attack": 34,
+        "lines": 38,
+        "quads": 0,
+        "pcs": 4,
+        "pcHits": 4,
+        "maxHeight": 4,
+        "meanMs": 16.87,
+        "p95Ms": 36.52
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 7,
+      "before": {
+        "turns": 100,
+        "attack": 37,
+        "lines": 69,
+        "quads": 3,
+        "pcs": 0,
+        "pcHits": 0,
+        "maxHeight": 11,
+        "meanMs": 13.88,
+        "p95Ms": 19.94
+      },
+      "after": {
+        "turns": 100,
+        "attack": 39,
+        "lines": 71,
+        "quads": 0,
+        "pcs": 0,
+        "pcHits": 2,
+        "maxHeight": 9,
+        "meanMs": 18.8,
+        "p95Ms": 27.99
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 19,
+      "before": {
+        "turns": 100,
+        "attack": 40,
+        "lines": 69,
+        "quads": 3,
+        "pcs": 0,
+        "pcHits": 0,
+        "maxHeight": 10,
+        "meanMs": 13.38,
+        "p95Ms": 18.57
+      },
+      "after": {
+        "turns": 100,
+        "attack": 37,
+        "lines": 69,
+        "quads": 1,
+        "pcs": 0,
+        "pcHits": 3,
+        "maxHeight": 10,
+        "meanMs": 18.54,
+        "p95Ms": 29.66
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 31,
+      "before": {
+        "turns": 100,
+        "attack": 37,
+        "lines": 69,
+        "quads": 2,
+        "pcs": 0,
+        "pcHits": 0,
+        "maxHeight": 8,
+        "meanMs": 13.96,
+        "p95Ms": 18.7
+      },
+      "after": {
+        "turns": 100,
+        "attack": 36,
+        "lines": 69,
+        "quads": 1,
+        "pcs": 0,
+        "pcHits": 2,
+        "maxHeight": 11,
+        "meanMs": 18.79,
+        "p95Ms": 27.89
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 53,
+      "before": {
+        "turns": 100,
+        "attack": 35,
+        "lines": 68,
+        "quads": 1,
+        "pcs": 0,
+        "pcHits": 0,
+        "maxHeight": 11,
+        "meanMs": 12.92,
+        "p95Ms": 17
+      },
+      "after": {
+        "turns": 100,
+        "attack": 38,
+        "lines": 68,
+        "quads": 2,
+        "pcs": 0,
+        "pcHits": 1,
+        "maxHeight": 11,
+        "meanMs": 18.31,
+        "p95Ms": 26.96
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 79,
+      "before": {
+        "turns": 100,
+        "attack": 35,
+        "lines": 67,
+        "quads": 2,
+        "pcs": 0,
+        "pcHits": 0,
+        "maxHeight": 8,
+        "meanMs": 12.76,
+        "p95Ms": 17.21
+      },
+      "after": {
+        "turns": 100,
+        "attack": 46,
+        "lines": 69,
+        "quads": 4,
+        "pcs": 1,
+        "pcHits": 5,
+        "maxHeight": 8,
+        "meanMs": 16.48,
+        "p95Ms": 25.84
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 101,
+      "before": {
+        "turns": 100,
+        "attack": 35,
+        "lines": 69,
+        "quads": 0,
+        "pcs": 1,
+        "pcHits": 0,
+        "maxHeight": 12,
+        "meanMs": 12.87,
+        "p95Ms": 17.98
+      },
+      "after": {
+        "turns": 100,
+        "attack": 51,
+        "lines": 70,
+        "quads": 3,
+        "pcs": 2,
+        "pcHits": 4,
+        "maxHeight": 11,
+        "meanMs": 19.17,
+        "p95Ms": 35.82
+      }
+    }
+  ]
+}

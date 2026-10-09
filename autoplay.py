@@ -250,7 +250,9 @@ class AutoPlayer:
             prefix=self.human_prefix(state,c,observed)
             self.plan={'piece':state['piece'],'board':state['board'],'target':cells(c['piece'],c['pos']),
                        'actions':prefix+path+['DROP'],'human_prefix':len(prefix),'index':0,'result':c['board'],'chain':c.get('chain',{'combo':0,'b2b':0}),
-                       'auto':c.get('auto',{}),'intent':c.get('intent'),'comboPlan':c.get('comboPlan',0)}
+                       'auto':c.get('auto',{}),'intent':c.get('intent'),'comboPlan':c.get('comboPlan',0),
+                       'pcVerified':c.get('pcVerified',False),'pcPieces':c.get('pcPieces',0),'attackPlan':c.get('attackPlan',0),
+                       'attackPriority':c.get('attackPriority',False)}
         p=self.plan;action=p['actions'][p['index']]
         if p['index']<p.get('human_prefix',0):
             shifted=dict(state['start'],x=state['start']['x']+(-1 if action=='L' else 1))

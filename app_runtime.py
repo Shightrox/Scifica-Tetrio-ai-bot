@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 import sys
 
-VERSION = '0.15.2'
+VERSION = '0.16.0'
 RESOURCE_ROOT = Path(__file__).resolve().parent
 
 def data_directory():

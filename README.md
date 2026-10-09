@@ -28,6 +28,7 @@ The browser sandbox above runs entirely locally. The screenshot uses a synthetic
 - **See the field.** Direct Windows capture, four rows above spawn, NEXT and HOLD. Grid-aligned block contours help separate pieces from colorful backgrounds.
 - **Plan ahead.** SRS reachability, HOLD branches, limited multi-piece search and speculative next-state caching.
 - **Adapt.** Prepare quads and short clear chains when there is space; downstack when height, holes or buried garbage become dangerous.
+- **Build pressure.** Attack priority favors estimated garbage output and attack per piece. A dedicated search proves perfect clears using up to six known pieces and HOLD, then keeps the verified continuation as NEXT advances.
 - **Verify each key.** Observe the result of movement, HOLD and hard drop before advancing. Recover and replan after missed input, changed stacks or search-worker failure.
 - **Set the tempo.** Speed adjusts key spacing; MAX adds no artificial wait. Humanization adds occasional verified lateral out-and-back moves in low-risk positions.
 - **Stay in view.** Custom draggable title bar, minimize and close. The panel stays open when autopilot starts and stays put during background recalibration.
@@ -48,7 +49,7 @@ Edited illustration from a user screenshot: nickname changed to `scifica`; the c
 
 ### Windows executable
 
-Download **`Scifica-0.15.2-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
+Download **`Scifica-0.16.0-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
 
 Requires **64-bit Windows 10 2004+ or Windows 11**. The executable opens the desktop pilot; the optional browser sandbox remains available from source. Settings and logs live in `%LOCALAPPDATA%\Scifica`, outside the executable's temporary extraction directory. The first launch may take a few seconds to unpack.
 
@@ -87,6 +88,7 @@ Only the Windows overlay sends game input. The browser has its own sandbox and a
 | Speed: MAX | No extra pacing delay; fresh-frame verification still applies |
 | Humanization: 0–100% | Probability of one sidestep + return on an eligible piece; also up to ±12% timing variation below MAX |
 | HOLD | Allow the search to use Shift to exchange the piece |
+| Attack priority | Favor garbage, B2B and clear chains; enable dedicated PC search. On by default; survival still overrides aggression |
 | Swap Z / X | Reverse the configured rotation keys |
 | Return to game | Give focus back to the selected game window |
 | Ctrl+Alt+F7 | Arm / stop autopilot |
@@ -98,6 +100,8 @@ Only the Windows overlay sends game input. The browser has its own sandbox and a
 Expected game bindings: **Left / Right** move, **Z** counterclockwise, **X** clockwise, **Space** hard drop, **Shift** HOLD. Match them in TETR.IO.
 
 Humanization defaults to **0%**. Extra movement is skipped for high stacks, low clearance, inferred-only poses and recovery attempts. It never randomly drops, holds or rotates. A failed detour triggers replanning from the observed position. It is a movement-style option, not a guarantee of human-like play.
+
+With **Attack priority** enabled, the panel displays `PRESSURE` or a verified `PC / N pieces` plan. The `~attack` number estimates the known sequence before incoming-garbage cancellation and room modifiers. Changing the setting replans while preserving pending HOLD/DROP verification. Turning it off restores the balanced three-piece search. [Strategy details and measured comparison](docs/attack-priority.md).
 
 Preferences are stored in `settings.json` (beside the source, or under `%LOCALAPPDATA%\Scifica` for the EXE); capture rectangles and armed state are not persisted. Opening the panel pauses input through the focus guard. Use **Return to game** to continue. Minimizing the panel keeps the overlay running.
 
@@ -126,6 +130,7 @@ Read [the architecture notes](docs/architecture.md) for the capture model, AUTO 
 - Native routes use lateral moves, 90° SRS rotations, HOLD and hard drop. T-spins/all-spins, soft-drop tucks and 180° rotations are not modeled.
 - Attack values and B2B/combo rewards are approximations. Room-specific damage formulas, incoming-garbage timers and attack cancellation are not modeled. Risen garbage is detected from the field and triggers replanning.
 - Search is a limited beam, not an exhaustive solution. Scores compare candidates; they are not success probabilities. Finite-speed gravity, DAS/ARR and lock-delay timing are handled through feedback rather than a full frame simulator.
+- The PC solver searches low fields and known previews within a bounded budget. It does not promise a PC opener from an unknown bag, force an impossible setup, or execute soft-drop-dependent templates. A verified plan assumes the field stays unchanged; risen garbage invalidates it.
 - Speed is a key tempo, not pieces per second. Capture, search, the game's response and verification determine actual throughput.
 
 ## Development

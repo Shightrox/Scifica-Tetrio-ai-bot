@@ -37,10 +37,14 @@ def newest(q,value):
 
 def auto_description(plan):
     if not plan:return 'AUTO / Waiting for field'
+    if plan.get('pcVerified'):
+        return f"PC / {plan.get('pcPieces',1)} pieces · ~{plan.get('attackPlan',0):g} attack"
     mode={'attack':'ATTACK','balance':'BALANCE','survive':'SURVIVE'}.get(plan.get('auto',{}).get('mode'),'BALANCE')
     goal={'downstack':'downstack','perfect-clear':'perfect clear','quad':'quad',
           'prepare-quad':'prepare quad','clean-stack':'clean stack',
           'combo':f"chain up to {plan.get('comboPlan',2)} clears"}.get(plan.get('intent'),'replan')
+    if plan.get('attackPriority') and mode!='SURVIVE':
+        return f"PRESSURE / {goal} · ~{plan.get('attackPlan',0):g} attack"
     return f'AUTO / {mode} · {goal}'
 
 class Overlay:
@@ -119,6 +123,10 @@ class Overlay:
     def focus_game(self):
         if self.target and user.IsWindow(self.target):
             user.SetForegroundWindow(self.target);self.last_window_check=0
+
+    def change_attack_priority(self):
+        if self.player.enabled:self.player.recover('Attack priority changed; replanning',time.perf_counter())
+        self.live_state=None;self.current_key=None;self.pending=None;self.job=None;self.advice=None;self.last_draw=None
 
     def place_controls(self):
         # One-time setup only. Automatic recalibration must never move the panel.
@@ -357,7 +365,7 @@ class Overlay:
                         self.seen_at=now
                         if self.vision_source in ('pixels','partial','fragments'):self.geometry_good_at=f['at']
                         state={'board':v['board'],'piece':v['active']['piece'],'start':v['active']['start'],'queue':v['queue'],'generation':v.get('generation',0),
-                               'simpleOnly':self.player.enabled,'profile':'versus','chain':dict(self.player.chain),'controllerRevision':self.player.revision,
+                               'simpleOnly':self.player.enabled,'profile':'versus','chain':dict(self.player.chain),'controllerRevision':self.player.revision,'attackPriority':self.attack_priority.get(),
                                'hold':self.player.held_piece if self.player.held_piece is not None else self.detected_hold,
                                'allowHold':self.use_hold.get() and self.hold_known,'canHold':not self.player.hold_blocked}
                         self.live_state=state

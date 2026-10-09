@@ -17,4 +17,30 @@ async function response(id,stage){const until=performance.now()+4000;while(perfo
  const firsts=[];for(let id=10;id<40;id++){const a=replies.find(r=>r.id===id&&r.result);if(a)firsts.push(a.elapsed);}firsts.sort((a,b)=>a-b);
  console.log('PASS HOLD-aware cache, canHold exclusion, latest-position deep answer amid 30 moving frames');
  console.log('First-answer IPC ms p50/p95:',firsts[Math.floor(firsts.length*.5)].toFixed(1),firsts[Math.floor(firsts.length*.95)].toFixed(1));
+ // A proved PC must survive new preview tails and a real HOLD transition.
+ s=structuredClone(require('./pc-cases.json')[0]);
+ const initial=structuredClone(s);let id=100,locks=0,holds=0;
+ while(locks<4){
+  send(id,s);r=await response(id++,'final');let c=r.result.candidates[0];
+  assert(c.pcVerified);assert.equal(c.pcPieces,4-locks);
+  if(locks)assert(r.continuation,'keep the proved sequence when unseen NEXT tails appear');
+  if(c.useHold){
+   const old=s.piece;
+   s={...s,piece:c.piece,hold:old,queue:s.hold?s.queue:s.queue.slice(1),canHold:false,start:E.entry(c.piece,true)};
+   while(s.queue.length<5)s.queue.push('I');
+   send(id,s);r=await response(id++,'final');c=r.result.candidates[0];
+   assert(r.continuation&&c.pcVerified&&!c.useHold,'HOLD acknowledgement continues the same proof');holds++;
+  }
+  s={...s,board:c.board,piece:s.queue[0],queue:s.queue.slice(1),hold:c.newHold,canHold:true,
+     start:E.entry(s.queue[0],true),chain:{combo:c.chain.combo,b2b:c.chain.b2b}};
+  while(s.queue.length<5)s.queue.push('I');locks++;
+ }
+ assert(holds>0);assert(s.board.every(row=>row.every(v=>!v)));
+ send(120,{...initial,queue:[...initial.queue.slice(0,4),'Z']});r=await response(120);
+ assert(!r.cache&&!r.continuation,'fifth preview cell participates in cache identity');
+ send(121,{...initial,attackPriority:false});r=await response(121);
+ assert(!r.cache&&!r.continuation,'strategy switch invalidates a pressure proof');
+ const changed=structuredClone(initial);changed.board[15][5]='G';
+ send(122,changed);r=await response(122);assert(!r.continuation&&!r.cache,'new garbage invalidates a PC proof');
+ console.log('PASS four-lock PC through new NEXT tails and HOLD; strategy, fifth preview and board changes invalidate reuse');
 }finally{p.stdin.end();}})().catch(e=>{console.error(e);process.exitCode=1;p.kill();});

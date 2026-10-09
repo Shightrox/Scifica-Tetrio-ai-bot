@@ -106,6 +106,9 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(preferences.load(path),preferences.DEFAULTS)
             preferences.save(path,dict(key_rate=11,humanization=37,use_hold=False,swap_rotation=True))
             data=preferences.load(path);self.assertEqual(data['key_rate'],11);self.assertFalse(data['use_hold'])
+            self.assertTrue(data['attack_priority'],'existing settings migrate to attack priority')
+            preferences.save(path,{**data,'attack_priority':False})
+            self.assertFalse(preferences.load(path)['attack_priority'])
             path.write_text('{broken');self.assertEqual(preferences.load(path),preferences.DEFAULTS)
             self.assertEqual(preferences.sanitize({'key_rate':float('nan'),'humanization':float('inf')}),preferences.DEFAULTS)
 
