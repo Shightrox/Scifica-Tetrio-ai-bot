@@ -42,7 +42,7 @@ def auto_description(plan):
     mode={'attack':'ATTACK','balance':'BALANCE','survive':'SURVIVE'}.get(plan.get('auto',{}).get('mode'),'BALANCE')
     goal={'downstack':'downstack','perfect-clear':'perfect clear','quad':'quad',
           'prepare-quad':'prepare quad','clean-stack':'clean stack',
-          'combo':f"chain up to {plan.get('comboPlan',2)} clears"}.get(plan.get('intent'),'replan')
+          'combo':f"chain up to {plan.get('comboPlan',2)} clears",'t-spin':'T-spin attack'}.get(plan.get('intent'),'replan')
     if plan.get('attackPriority') and mode!='SURVIVE':
         return f"PRESSURE / {goal} · ~{plan.get('attackPlan',0):g} attack"
     return f'AUTO / {mode} · {goal}'
@@ -360,14 +360,14 @@ class Overlay:
                     self.game_blocked=v.get('blocked')
                     self.notice_cells=v.get('noticeCells',0)
                     self.detected_hold=v.get('hold');self.hold_known=v.get('holdKnown',False)
+                    held,hold_known=self.player.resolve_hold(self.detected_hold,self.hold_known)
                     self.last_image_at=f['at'];self.ambiguity=v['ambiguous'];self.garbage_seen+=v.get('garbage_rise',0)
                     if v['active'] and v['ambiguous']==0 and not self.game_blocked:
                         self.seen_at=now
                         if self.vision_source in ('pixels','partial','fragments'):self.geometry_good_at=f['at']
                         state={'board':v['board'],'piece':v['active']['piece'],'start':v['active']['start'],'queue':v['queue'],'generation':v.get('generation',0),
-                               'simpleOnly':self.player.enabled,'profile':'versus','chain':dict(self.player.chain),'controllerRevision':self.player.revision,'attackPriority':self.attack_priority.get(),
-                               'hold':self.player.held_piece if self.player.held_piece is not None else self.detected_hold,
-                               'allowHold':self.use_hold.get() and self.hold_known,'canHold':not self.player.hold_blocked}
+                               'simpleOnly':True,'tucks':True,'profile':'versus','chain':dict(self.player.chain),'controllerRevision':self.player.revision,'attackPriority':self.attack_priority.get(),
+                               'hold':held,'allowHold':self.use_hold.get() and hold_known,'canHold':not self.player.hold_blocked}
                         self.live_state=state
                         key=json.dumps(state,separators=(',',':'))
                         if key!=self.current_key:
@@ -416,7 +416,7 @@ class Overlay:
     def update_player_status(self):
         strategy=auto_description(self.player.plan or (self.advice['candidate'] if self.advice else None))
         if self.strategy_status.get()!=strategy:self.strategy_status.set(strategy)
-        held=self.player.held_piece if self.player.held_piece is not None else self.detected_hold
+        held=self.player.verified_hold if self.player.hold_verified else self.detected_hold
         lag=f"{self.advice['latency']:.0f} ms" if self.advice else 'waiting'
         origin={'pixels':'visible','partial':'partial','fragments':'fragments','next':'from NEXT'}.get(self.vision_source,'?') if self.live_state else 'unseen'
         if self.live_state and self.vision_source=='pixels' and self.live_state['start']['y']<0:origin='above grid'
@@ -456,8 +456,8 @@ class Overlay:
                 self.canvas.create_rectangle(xx+3,yy+3,xx+cw-3,yy+ch-3,outline=GREEN,width=3)
                 self.canvas.create_rectangle(xx+6,yy+6,xx+cw-6,yy+ch-6,outline='#edfbd5',width=1)
             path=list(c['path'])
-            while path and path[-1]=='D':path.pop()
-            symbols={'L':'←','R':'→','D':'↓','CW':'↻','CCW':'↺'};groups=[]
+            while path and path[-1] in ('D','SD'):path.pop()
+            symbols={'L':'←','R':'→','D':'↓','SD':'↓','CW':'↻','CCW':'↺'};groups=[]
             for step in path:
                 if groups and groups[-1][0]==step:groups[-1][1]+=1
                 else:groups.append([step,1])
@@ -480,7 +480,7 @@ class Overlay:
         self.canvas.create_text(bx+10,by+74,text=next_text,fill=GREEN if self.preview else '#f0ae7e',anchor='nw',font=('Segoe UI',9))
         auto_text=('AUTO: '+self.player.reason) if self.player.enabled else self.player.reason+' · Ctrl+Alt+F7'
         self.canvas.create_text(bx+10,by+96,text=auto_text[:53],fill=GREEN if self.player.enabled else '#f0ae7e',anchor='nw',font=('Segoe UI',9))
-        self.canvas.create_text(bx+10,by+117,text=f"Locks {self.player.placed} · combo {self.player.chain['combo']} · B2B quad {self.player.chain['b2b']} · garbage ↑{self.garbage_seen}",fill='#abbcaf',anchor='nw',font=('Segoe UI',8))
+        self.canvas.create_text(bx+10,by+117,text=f"Locks {self.player.placed} · combo {self.player.chain['combo']} · B2B {self.player.chain['b2b']} · garbage ↑{self.garbage_seen}",fill='#abbcaf',anchor='nw',font=('Segoe UI',8))
 
     def close(self):
         self.window_chrome.cancel_drag()

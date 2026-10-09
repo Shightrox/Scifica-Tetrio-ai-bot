@@ -116,4 +116,18 @@ class ControllerTests(unittest.TestCase):
             for value,expected in ((-4,0),(105,100),(float('nan'),0),('bad',0)):
                 self.assertEqual(preferences.sanitize({'dynamic_tempo':value})['dynamic_tempo'],expected)
 
+    def test_one_deep_route_upgrade_uses_the_current_verified_pose(self):
+        bot,keys=self.bot(human=0);state=scene();first=advice(state,['L'],-1)
+        first['candidate']['lookahead']=1
+        bot.update(.4,state,first,.4,True)
+        moved={**state,'start':dict(state['start'],x=2)}
+        bot.update(.44,moved,None,.44,True)
+        deep=advice(moved,['R'],1);deep['candidate']['lookahead']=6
+        bot.update(.48,moved,deep,.48,True)
+        self.assertEqual(keys,[0x25,0x27]);self.assertTrue(bot.deep_replanned)
+        bot.update(.52,state,None,.52,True)
+        later=advice(state,['L'],-1);later['candidate']['lookahead']=7
+        bot.update(.56,state,later,.56,True)
+        self.assertEqual(keys,[0x25,0x27,0x20],'no repeated switching after deeper updates')
+
 if __name__=='__main__':unittest.main()

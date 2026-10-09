@@ -13,8 +13,10 @@ with patch.object(G.user,'SendInput',send),patch.object(G.user,'GetForegroundWin
  assert not g.down
  assert g.tap(0x58);g.release();time.sleep(.025)
  assert len(events)==4 and events[2][2]==8 and events[3][2]==10
+ assert g.tap(0x28);time.sleep(.035)
+ assert len(events)==6 and events[4][2]==9 and events[5][2]==11
  with patch.object(G.user,'GetForegroundWindow',lambda:8):assert not g.tap(0x20)
  with patch.object(G,'title',lambda h:'Editor'):assert not g.tap(0x20)
  with patch.object(G.user,'GetAsyncKeyState',lambda k:0x8000):assert not g.tap(0x20)
- assert len(events)==4
+ assert len(events)==6
 print('PASS: native INPUT layout, scan-code taps/key-up, no stuck keys, focus/title/modifier guards (SendInput mocked; no real keys sent)')

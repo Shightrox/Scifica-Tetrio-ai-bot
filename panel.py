@@ -128,6 +128,6 @@ def build(app, root_path):
         var=tk.StringVar(value=value);setattr(app,name,var)
         tk.Label(telemetry,textvariable=var,fg=color,bg=PANEL,font=(FONT,9),anchor='w',justify='left',
                  wraplength=408,height=height).pack(fill='x',padx=10,pady=(4,0))
-    tk.Label(body,text='Ctrl+Alt  F7 pilot  F8 field  F9 pause  F10 panel\nEsc stop   /   Z CCW   X CW   Space drop',
+    tk.Label(body,text='Ctrl+Alt  F7 pilot  F8 field  F9 pause  F10 panel\nEsc stop / Z CCW X CW / Down soft / Space drop',
              fg=MUTED,bg=BG,font=(FONT,9),justify='left',anchor='w').pack(fill='x',pady=(12,0))
     changed()

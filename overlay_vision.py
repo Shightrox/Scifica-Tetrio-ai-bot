@@ -273,9 +273,12 @@ class Reader:
             if crop.size:
                 pieces=preview_pieces(np.clip(crop.astype(np.float32)*1.5,0,255).astype(np.uint8),cell)
                 sample=pieces[0] if len(pieces)==1 else None
-                # Neutral/light cells can mean a disabled HOLD, not an empty slot.
-                neutral=((crop.max(2).astype(int)-crop.min(2)<25)&(crop.max(2)>65)).sum()
-                known=sample is not None or not pieces and neutral<cell*cell*.4
+                # Inspect the slot interior for emptiness, not its white header
+                # and border. Grey disabled pieces remain unknown to vision.
+                interior=rgb[round(top+cell*1.1):round(top+cell*3.6),
+                             max(0,round(left-cell*4.6)):round(left-cell*1.4)]
+                empty=interior.size and (interior.max(2)<32).mean()>.985
+                known=sample is not None or not pieces and empty
                 if known:
                     if sample==self.hold_sample:self.hold_count+=1
                     else:self.hold_sample=sample;self.hold_count=1;self.hold_known=False

@@ -1,11 +1,11 @@
 {
   "name": "scifica-tetrio-ai-bot",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "private": true,
   "description": "Local visual TETR.IO coach, search inspector and verified Windows autopilot",
   "license": "MIT",
   "engines": {"node": ">=22"},
   "scripts": {
-    "test": "node tests/engine.cjs && node tests/versus.cjs && node tests/auto.cjs && node tests/pressure.cjs && node tests/solver.cjs"
+    "test": "node tests/engine.cjs && node tests/versus.cjs && node tests/auto.cjs && node tests/pressure.cjs && node tests/tucks.cjs && node tests/solver.cjs"
   }
 }

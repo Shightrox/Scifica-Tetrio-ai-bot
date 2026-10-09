@@ -17,6 +17,7 @@ jobs:
       - run: npm test
       - run: python -m unittest discover -s tests -p "test_*.py" -v
       - run: python tests/recovery.py
+      - run: python tests/tucks.py
       - run: python tests/game_input_checks.py
       - run: python tests/vision_checks.py
       - run: python tests/window_checks.py

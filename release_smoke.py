@@ -55,6 +55,20 @@ def run(report_path):
         assert app.advice and app.advice['candidate'].get('pcVerified'),'Bundled PC search failed'
         report['perfect_clear_pieces']=app.advice['candidate']['pcPieces']
         assert report['perfect_clear_pieces']==4
+        board=[[None]*10 for _ in range(20)];board[17][3]='J'
+        board[18]=[None if v=='.' else 'J' for v in 'XXX...XXXX']
+        board[19]=[None if v=='.' else 'J' for v in 'XXXX.XXXXX']
+        state={'board':board,'piece':'T','start':{'x':3,'y':-2,'r':0},'queue':['I','O','S'],
+               'simpleOnly':True,'tucks':True,'profile':'versus','attackPriority':True,'allowHold':False}
+        key=json.dumps(state,separators=(',',':'))
+        app.advice=None;app.current_key=key;app.pending=(state,key,time.perf_counter());app.send_pending()
+        deadline=time.perf_counter()+15
+        while time.perf_counter()<deadline:
+            app.root.update();time.sleep(.01)
+            if app.advice and app.advice['stage']=='final':break
+        assert app.advice and app.advice['candidate'].get('spin')=='full','Bundled native spin search failed'
+        assert app.advice['candidate']['requiresSoftDrop'] and app.advice['candidate']['lines']==2
+        report['native_t_spin']='double with verified descent checkpoints'
         report['tk']=app.root.tk.call('info','patchlevel')
         report['capture_exclusion']=True # Overlay construction fails if unsupported.
         app.key_rate.set(17);app.humanization.set(23);app.dynamic_tempo.set(41);app.attack_priority.set(False);app.save_preferences()

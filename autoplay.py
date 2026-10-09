@@ -27,10 +27,10 @@ class AutoPlayer:
         self.plan=None;self.waiting=None;self.started=0;self.last_seen=0;self.chain={'combo':0,'b2b':0};self.placed=0
         self.planning_key=None;self.planning_at=0
         self.paused_at=None;self.retries=0
-        self.hold_blocked=False;self.held_piece=None
+        self.hold_blocked=False;self.held_piece=None;self.verified_hold=None;self.hold_verified=False
         self.early_spawn=None
         self.recovery=None;self.revision=0;self.failed_motion=None
-        self.vk={'L':0x25,'R':0x27,'CW':0x58,'CCW':0x5a,'DROP':0x20,'HOLD':0x10}
+        self.vk={'L':0x25,'R':0x27,'CW':0x58,'CCW':0x5a,'SD':0x28,'DROP':0x20,'HOLD':0x10}
         self.rng=rng or random.Random();self.key_rate=30;self.humanization=0;self.dynamic_tempo=0
         self.last_tap_at=float('-inf');self.pace_factor=1;self.human_considered=False
         self.reset_rhythm()
@@ -43,6 +43,7 @@ class AutoPlayer:
     def reset_rhythm(self):
         self.timing_started=None;self.thinking_done=False;self.think_delay=0
         self.tap_delay=0;self.burst_scale=1
+        self.deep_replanned=False
 
     def tempo_safety(self,state,candidate,observed):
         if not observed or self.retries or candidate.get('auto',{}).get('mode')=='survive':return 0
@@ -58,6 +59,7 @@ class AutoPlayer:
         HOLD shares the placement's rhythm. Fresh pixels can shorten a wait as
         the piece falls or danger rises. Acknowledgements run before this gate.
         """
+        if candidate.get('inTuck'):return True # finish before lock delay; feedback still runs first
         strength=self.dynamic_tempo/100
         safety=self.tempo_safety(state,candidate,observed) if strength else 0
         if strength and self.timing_started is None:
@@ -95,7 +97,7 @@ class AutoPlayer:
         """
         if self.human_considered or not observed:return []
         self.human_considered=True
-        if not self.humanization or self.retries or candidate.get('auto',{}).get('mode')=='survive':return []
+        if not self.humanization or self.retries or candidate.get('requiresSoftDrop') or candidate.get('spin') or candidate.get('auto',{}).get('mode')=='survive':return []
         if any(any(row) for row in state['board'][:11]) or state['start']['y']>3:return []
         if self.rng.random()>=self.humanization/100:return []
         options=[]
@@ -110,7 +112,7 @@ class AutoPlayer:
         self.started=now+.35;self.last_seen=now;self.chain={'combo':0,'b2b':0};self.placed=0
         self.planning_key=None
         self.paused_at=None;self.retries=0
-        self.hold_blocked=False;self.held_piece=None
+        self.hold_blocked=False;self.held_piece=None;self.verified_hold=None;self.hold_verified=False
         self.early_spawn=None
         self.recovery=None;self.revision+=1;self.failed_motion=None
         self.last_tap_at=float('-inf');self.pace_factor=1;self.human_considered=False
@@ -118,6 +120,14 @@ class AutoPlayer:
 
     def stop(self,reason='Stopped'):
         self.enabled=False;self.phase='off';self.reason=reason;self.plan=None;self.waiting=None;self.early_spawn=None;self.recovery=None;self.release()
+
+    def resolve_hold(self,detected,known):
+        # The outgoing piece becomes authoritative only after HOLD is observed.
+        # A grey/occluded slot must not disable an already confirmed exchange.
+        if known and not self.hold_blocked and not (self.waiting and self.waiting['action']=='HOLD'):
+            if detected is not None or not self.hold_verified:
+                self.verified_hold=detected;self.hold_verified=True
+        return (self.verified_hold,True) if self.hold_verified else (detected,known)
 
     def recover(self,reason,now,reset=False,delay=.06):
         """Stay armed, discard the route, then replan from distinct fresh frames.
@@ -133,6 +143,7 @@ class AutoPlayer:
         if reset:
             self.waiting=None;self.chain={'combo':0,'b2b':0}
             self.hold_blocked=True;self.held_piece=None
+            self.verified_hold=None;self.hold_verified=False
             self.failed_motion=None
         elif self.waiting and self.waiting['action'] not in ('DROP','HOLD'):
             self.waiting=None
@@ -142,7 +153,7 @@ class AutoPlayer:
 
     def resync_action(self,reason,now,state):
         q=self.waiting
-        if q['action'] in ('L','R','CW','CCW') and state['board']==q['board'] and state['piece']==q['piece'] and state['queue']==q['queue']:
+        if q['action'] in ('L','R','CW','CCW','SD') and state['board']==q['board'] and state['piece']==q['piece'] and state['queue']==q['queue']:
             context=self.motion_context(state)
             old=self.failed_motion
             count=old['count']+1 if old and old['context']==context and old['action']==q['action'] else 1
@@ -151,6 +162,7 @@ class AutoPlayer:
             # Shift may have been ignored or its confirmation missed. Do not
             # swap again; place the actual visible piece and read HOLD afresh.
             self.hold_blocked=True;self.held_piece=None
+            self.verified_hold=None;self.hold_verified=False
         if state['board']!=q.get('before_board',q['board']) or state['queue']!=q['queue']:
             self.chain={'combo':0,'b2b':0}
         self.waiting=None;self.retries+=1
@@ -194,6 +206,7 @@ class AutoPlayer:
                 if not observed:self.phase='verify';self.reason='Verifying HOLD';return
                 queue_ok=q['old_hold'] is not None or state['queue'][:2]==q['queue'][1:3]
                 if state['piece']==q['expected'] and queue_ok and (state['board']==q['board'] or garbage_shift(q['board'],state['board'])):
+                    self.verified_hold=q['outgoing'];self.hold_verified=True
                     self.plan=None;self.waiting=None;self.planning_key=None;self.phase='ready';self.reason='HOLD confirmed; planning';return
                 if now-q['at']>.7:self.resync_action('HOLD missed; using visible piece',now,state)
                 return
@@ -238,6 +251,15 @@ class AutoPlayer:
                     if state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or state['queue']!=q['queue']:self.reset_rhythm()
                     self.plan=None;self.waiting=None;self.phase='ready';self.reason='Field changed; replanning';return
                 actual=cells(state['piece'],state['start']);before=q['cells']
+                if q['action']=='SD':
+                    target=q['target']
+                    if actual==target:
+                        self.plan['index']+=1;self.waiting=None;self.retries=0;self.phase='moving';return
+                    same_column=min(x for x,y in actual)==min(x for x,y in before) and self.shape(actual)==self.shape(before)
+                    if not same_column or min(y for x,y in actual)>min(y for x,y in target):
+                        self.resync_action('Descent changed; replanning',now,state);return
+                    if min(y for x,y in actual)>min(y for x,y in before):
+                        self.waiting=None;self.phase='moving';self.reason='Descending to surface';return
                 if actual!=before:
                     oldx=min(x for x,y in before);newx=min(x for x,y in actual)
                     if q['action'] in ('L','R'):
@@ -258,6 +280,10 @@ class AutoPlayer:
             self.phase='vision';self.reason=f"{state['piece']} from NEXT; waiting for pose";return
         if self.plan and (state['board']!=self.plan['board'] or state['piece']!=self.plan['piece']):
             self.plan=None;self.reason='Stack changed; replanning'
+        if (self.plan and not self.plan.get('inTuck') and not self.deep_replanned and observed and state['start']['y']<=3
+                and advice and advice['state']==state and advice['stage']=='final'
+                and advice['candidate'].get('lookahead',1)>self.plan.get('lookahead',1)):
+            self.plan=None;self.deep_replanned=True;self.reason='Deeper attack route ready'
         if not self.plan:
             if state.get('controllerRevision',self.revision)!=self.revision:return
             if not advice or advice['state']!=state:return
@@ -265,7 +291,7 @@ class AutoPlayer:
             planning_key=(tuple(tuple(r) for r in state['board']),state['piece'],state.get('generation'))
             if planning_key!=self.planning_key:self.planning_key=planning_key;self.planning_at=now
             wait_budget=.02 if advice['candidate'].get('auto',{}).get('mode')=='survive' else .04
-            if advice['stage']=='fast' and now-self.planning_at<wait_budget:
+            if advice['stage'] in ('fast','refined') and now-self.planning_at<wait_budget:
                 self.reason='Refining with NEXT';return
             c=advice['candidate']
             failed=self.failed_motion
@@ -285,18 +311,32 @@ class AutoPlayer:
                 if not self.send('HOLD',now):self.recover('HOLD input failed; replanning',now);return
                 self.early_spawn=None
                 self.hold_blocked=True;self.held_piece=state['piece']
-                self.waiting={'action':'HOLD','at':now,'expected':expected,'old_hold':state.get('hold'),'board':state['board'],'queue':state['queue']}
+                self.waiting={'action':'HOLD','at':now,'expected':expected,'outgoing':state['piece'],'old_hold':state.get('hold'),'board':state['board'],'queue':state['queue']}
                 self.phase='verify';self.reason='Verifying HOLD';return
-            while path and path[-1]=='D':path.pop()
-            if any(a not in ('L','R','CW','CCW') for a in path):self.reason='Waiting for a hard-drop route';return
+            while path and path[-1] in ('D','SD'):path.pop()
+            if any(a not in ('L','R','CW','CCW','SD') for a in path):self.reason='Waiting for an executable route';return
+            route=c.get('route',[])
+            if 'SD' in path and (len(route)<len(path) or any(step.get('action')!=action for step,action in zip(route,path))):
+                self.reason='Waiting for descent checkpoints';return
             prefix=self.human_prefix(state,c,observed)
             self.plan={'piece':state['piece'],'board':state['board'],'target':cells(c['piece'],c['pos']),
                        'actions':prefix+path+['DROP'],'human_prefix':len(prefix),'index':0,'result':c['board'],'chain':c.get('chain',{'combo':0,'b2b':0}),
+                       'route':([None]*len(prefix))+route[:len(path)],'requiresSoftDrop':c.get('requiresSoftDrop',False),'spin':c.get('spin'),
+                       'lookahead':c.get('lookahead',1),
                        'auto':c.get('auto',{}),'intent':c.get('intent'),'comboPlan':c.get('comboPlan',0),
                        'pcVerified':c.get('pcVerified',False),'pcPieces':c.get('pcPieces',0),'attackPlan':c.get('attackPlan',0),
                        'attackPriority':c.get('attackPriority',False)}
         p=self.plan;action=p['actions'][p['index']]
+        if action=='SD':p['inTuck']=True
         if not self.pace_ready(now,state,p,observed):return
+        if action=='SD':
+            if not observed:self.phase='vision';self.reason='Verifying pose before descent';return
+            target=cells(p['piece'],p['route'][p['index']]['pos'])
+            landed=landing(state['board'],state['piece'],state['start'])
+            if not landed or cells(state['piece'],landed)!=target:
+                self.plan=None;self.reason='Surface changed; replanning';return
+            if cells(state['piece'],state['start'])==target:
+                p['index']+=1;return
         if p['index']<p.get('human_prefix',0):
             shifted=dict(state['start'],x=state['start']['x']+(-1 if action=='L' else 1))
             if not observed or not fits(state['board'],state['piece'],shifted):
@@ -311,6 +351,7 @@ class AutoPlayer:
         self.waiting={'action':action,'at':now,'piece':state['piece'],'cells':cells(state['piece'],state['start']),
                       'rotation':state['start']['r'],'board':p['result'] if action=='DROP' else state['board'],
                       'queue':state['queue'],'generation':state.get('generation'),'chain':p['chain'],'before_board':state['board']}
+        if action=='SD':self.waiting['target']=target
         self.phase='verify';self.reason=('Early NEXT move: ' if early else 'Verifying ')+action
 
     @staticmethod

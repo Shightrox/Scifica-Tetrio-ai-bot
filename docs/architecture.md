@@ -12,15 +12,17 @@ The native reader samples a 10 × 20 field plus four rows above it, NEXT to the 
 
 ## Search
 
-`engine.js` enumerates reachable placements using SRS rotation kicks. Native requests restrict routes to moves the controller can execute: lateral movement and 90° rotations before hard drop. HOLD branches use the held piece or the known queue head, respecting the once-per-piece exchange.
+`engine.js` enumerates reachable placements using SRS rotation kicks. Native routes can move/rotate at spawn, soft-drop onto a surface, then rotate or slide under an overhang. `SD` means descent to a specific supported pose, never an arbitrary mid-air stop. I-piece routes remain straight-drop-only until SRS+ kick execution is implemented. HOLD branches use the held piece or the known queue head, respecting the once-per-piece exchange.
 
-`overlay-solver.cjs` stays alive over JSON-lines IPC. It provides a shallow answer, then a limited deeper search (balanced: three pieces, eight roots; attack priority: four pieces, six roots; beam width three). The cache identity includes the full observed queue, HOLD availability and attack setting. Cached continuations must match the board and queue; the current pose is rerouted rather than assumed unchanged. A worker identity and request key reject stale answers.
+`overlay-solver.cjs` stays alive over JSON-lines IPC. It provides a shallow answer, an intermediate two-placement native result, then deeper search (balanced: three pieces, eight roots; native attack priority: six pieces, six roots; beam width three). Legacy straight-drop requests retain four-piece pressure search. Cache identity includes the observed queue, HOLD availability, movement mode and attack setting. A newly revealed queue tail can reuse analysis of its matching known prefix; conflicting known pieces cannot. The current pose and descent checkpoints are rerouted. Spin classification is part of landing identity, so a straight-drop route cannot inherit an old spin reward. Worker identity and request keys reject stale answers.
 
 When attack priority is enabled, `perfect-clear.cjs` first attempts a low-field PC over at most six known placements. It uses bottom-up row bitmasks, deduplicated rotations, straight-drop landings, cell-count divisibility and failed-state memoization. Search stops at 12,000 visited states or a 24 ms time budget; root enumeration and final validation add a small amount of work outside that budget. Every found sequence is independently replayed through the ordinary SRS placement engine before it is eligible for selection. If the PC candidate scores worse than the fast alternative, the ordinary deeper search proceeds instead.
 
 PC continuations retain expected boards, active/HOLD pieces, chain state and known queue prefixes. Newly revealed preview tails are allowed; conflicting known pieces are not. Every reused landing is rerouted from the current observed pose. A predicted HOLD has a separate post-exchange continuation, so the replacement piece does not lose the PC plan. Risen garbage, mismatched chains, unavailable HOLD or strategy changes reject reuse. The first answer and input verification stay on their existing paths.
 
-The pilot normally gives a shallow result up to 40 ms for refinement, reduced to 20 ms under survival pressure. This is a refinement budget, not a promise about total latency. Verified deep answers can be used immediately.
+The pilot normally gives a shallow/intermediate result up to 40 ms for refinement, reduced to 20 ms under survival pressure. This is a refinement budget, not a promise about total latency. While an observed piece is near spawn, one later, deeper result may replace the route after the pending key has been acknowledged. A tuck already in progress cannot be changed this way.
+
+`attack-search.cjs` additionally searches consecutive clears over at most six known placements, including HOLD, with a 32 ms / 140-node budget. Individual placement enumeration may finish just beyond that time boundary. Its verified continuation uses the same board/queue/HOLD checks as a PC proof. This is a search horizon, not a maximum lifetime combo length.
 
 ## AUTO strategy
 
@@ -32,7 +34,7 @@ The pilot normally gives a shallow result up to 40 ms for refinement, reduced to
 
 Exact triggers live in `autoPolicy()` in `engine.js`. Every intermediate board is penalized for new holes, burial and dangerous growth. A prepared I-piece well earns setup credit only when an I is known in available HOLD or the short preview. Setup reward is capped at four layers and removed in survival mode. A promising preparation branch can be retained in the beam; it is not rewarded once per search step.
 
-The evaluator tracks approximate combo/B2B state after verified locks. Consecutive clears can justify a temporary local cost when a reachable continuation removes it. Unmodeled board transitions reset the chain instead of pretending the attack history is known. No room-specific attack-cancellation model or spin detector is present.
+The evaluator tracks approximate combo/B2B state after verified locks. Consecutive clears can justify a temporary local cost when a reachable continuation removes it. Unmodeled board transitions reset the chain instead of pretending the attack history is known. Native spin detection requires the route to finish in rotation: T uses three occupied corners, its front corners and fifth-kick promotion; other immobile shapes and cornerless immobile T shapes count as minis. The estimate approximates All-Mini+ and does not model custom spin tables or incoming cancellation.
 
 Attack priority adds weight to estimated garbage and attack per searched piece while reducing the incentive to skim low-value singles. The estimate now includes a combo floor for successive singles. A capped B2B reserve is valued once at the search leaf; competing narrow wells are penalized because they demand extra I pieces. All of these extra incentives are disabled for a state already in survival mode. They can resume after downstacking removes the danger. See [research and benchmarks](attack-priority.md).
 
@@ -51,7 +53,9 @@ Attack priority adds weight to estimated garbage and attack per searched piece w
  Escape / Stop ----------------> disarmed
 ```
 
-Movement acknowledgements require actual observed cells, not a NEXT-derived guess. HOLD waits for the expected replacement. DROP verifies the current landing matches the target, then waits for a new piece plus the resulting field; it does not immediately repeat a drop. Recovery requires three distinct fresh observed frames before proceeding. Repeatedly ineffective moves can select another candidate whose first action differs. Worker crashes restart with backoff while preserving armed state.
+Movement acknowledgements require actual observed cells, not a NEXT-derived guess. HOLD waits for the expected replacement. Its confirmed outgoing piece is retained through grey/occluded HOLD frames and cleared on capture reset. Empty-slot detection samples the dark interior, excluding the white heading and border. DROP verifies the current landing matches the target, then waits for a new piece plus the resulting field; it does not immediately repeat a drop. Recovery requires three distinct fresh observed frames before proceeding. Repeatedly ineffective moves can select another candidate whose first action differs. Worker crashes restart with backoff while preserving armed state.
+
+Soft drop sends short Down taps. Each observed downward movement is checked, and further taps continue only toward the planned supported pose. A changed surface, failed descent or missed rotation discards the route; it never skips straight to the final drop. Once descent begins, the remaining tuck actions bypass base pacing and cosmetic timing because they must fit inside the game's lock delay. Focus, pose and acknowledgement guards remain active. Movement flourishes are excluded from spin/tuck plans.
 
 The controller pauses on a stale/ambiguous frame, focus loss, a blocking game message, panel overlap or a held modifier. A temporary pause is different from explicit Stop. No screenshot alone can prove the position of a fully hidden piece.
 
@@ -88,6 +92,7 @@ Main files:
 | `field_geometry.py` | Grid proposals and stable calibration |
 | `engine.js`, `overlay-solver.cjs` | Reachability, evaluation, lookahead, warm worker |
 | `perfect-clear.cjs` | Budgeted bitboard PC search, SRS validation, continuation proof |
+| `attack-search.cjs` | Bounded consecutive-clear search and continuation metadata |
 | `autoplay.py`, `game_input.py` | Feedback controller and guarded key taps |
 | `preferences.py` | Validated local settings |
 | `app.js`, `vision.js`, `worker.js` | Browser sandbox and image inspector |

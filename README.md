@@ -29,6 +29,7 @@ The browser sandbox above runs entirely locally. The screenshot uses a synthetic
 - **Plan ahead.** SRS reachability, HOLD branches, limited multi-piece search and speculative next-state caching.
 - **Adapt.** Prepare quads and short clear chains when there is space; downstack when height, holes or buried garbage become dangerous.
 - **Build pressure.** Attack priority favors estimated garbage output and attack per piece. A dedicated search proves perfect clears using up to six known pieces and HOLD, then keeps the verified continuation as NEXT advances.
+- **Enter covered slots.** Soft-drop to a verified surface, then rotate or slide under an overhang. T-spin and immobile mini-spin clears contribute to attack and B2B estimates. Native attack lookahead covers up to six known placements.
 - **Verify each key.** Observe the result of movement, HOLD and hard drop before advancing. Recover and replan after missed input, changed stacks or search-worker failure.
 - **Set the tempo.** Speed sets base key spacing. Dynamic tempo adds thought pauses and varied tap intervals, with less hesitation under pressure. Humanization separately adds occasional verified lateral out-and-back moves in low-risk positions.
 - **Stay in view.** Custom draggable title bar, minimize and close. The panel stays open when autopilot starts and stays put during background recalibration.
@@ -49,7 +50,7 @@ Edited illustration from a user screenshot: nickname changed to `scifica`; the c
 
 ### Windows executable
 
-Download **`Scifica-0.16.1-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
+Download **`Scifica-0.17.0-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
 
 Requires **64-bit Windows 10 2004+ or Windows 11**. The executable opens the desktop pilot; the optional browser sandbox remains available from source. Settings and logs live in `%LOCALAPPDATA%\Scifica`, outside the executable's temporary extraction directory. The first launch may take a few seconds to unpack.
 
@@ -98,7 +99,7 @@ Only the Windows overlay sends game input. The browser has its own sandbox and a
 | Ctrl+Alt+F10 | Restore the control panel |
 | Escape | Stop autopilot immediately |
 
-Expected game bindings: **Left / Right** move, **Z** counterclockwise, **X** clockwise, **Space** hard drop, **Shift** HOLD. Match them in TETR.IO.
+Expected game bindings: **Left / Right** move, **Z** counterclockwise, **X** clockwise, **Down** soft drop, **Space** hard drop, **Shift** HOLD. Match them in TETR.IO. Once a tuck descent begins, the remaining inputs use feedback speed, bypassing cosmetic pauses and base spacing to reduce lock-delay risk.
 
 Humanization defaults to **0%**. Extra movement is skipped for high stacks, low clearance, inferred-only poses and recovery attempts. It never randomly drops, holds or rotates. A failed detour triggers replanning from the observed position. It is a movement-style option, not a guarantee of human-like play.
 
@@ -130,7 +131,7 @@ Read [the architecture notes](docs/architecture.md) for the capture model, AUTO 
 
 - This is a visual prototype, not a complete TETR.IO simulator. Custom skins, unusual layouts, heavy effects and completely obscured pieces can still interrupt tracking.
 - NEXT identifies the upcoming piece, not its current coordinates. The pilot may make a guarded early spawn move, but requires an observed pose before DROP.
-- Native routes use lateral moves, 90° SRS rotations, HOLD and hard drop. T-spins/all-spins, soft-drop tucks and 180° rotations are not modeled.
+- Native routes add surface-to-surface soft drops and 90° SRS tucks for T/J/L/S/Z (O can slide). Arbitrary mid-air stopping, I-piece tucks using SRS+ kicks, 180° rotations and named opener templates are not implemented. Spin rewards approximate All-Mini+; custom rotation/spin modes can differ.
 - Attack values and B2B/combo rewards are approximations. Room-specific damage formulas, incoming-garbage timers and attack cancellation are not modeled. Risen garbage is detected from the field and triggers replanning.
 - Search is a limited beam, not an exhaustive solution. Scores compare candidates; they are not success probabilities. Finite-speed gravity, DAS/ARR and lock-delay timing are handled through feedback rather than a full frame simulator.
 - The PC solver searches low fields and known previews within a bounded budget. It does not promise a PC opener from an unknown bag, force an impossible setup, or execute soft-drop-dependent templates. A verified plan assumes the field stays unchanged; risen garbage invalidates it.
@@ -142,6 +143,7 @@ Read [the architecture notes](docs/architecture.md) for the capture model, AUTO 
 npm test
 .venv\Scripts\python -m unittest discover -s tests -p "test_*.py" -v
 .venv\Scripts\python tests/recovery.py
+.venv\Scripts\python tests/tucks.py
 .venv\Scripts\python tests/game_input_checks.py
 .venv\Scripts\python tests/vision_checks.py
 .venv\Scripts\python tests/window_checks.py

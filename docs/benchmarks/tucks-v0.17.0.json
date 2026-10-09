@@ -1,0 +1,204 @@
+{
+  "baseline": "00dd1fae87e43e226836aa75556af8716a9f9c55",
+  "node": "v24.11.1",
+  "turnsPerRun": 60,
+  "seeds": [
+    7,
+    19,
+    31
+  ],
+  "results": [
+    {
+      "garbage": false,
+      "seed": 7,
+      "before": {
+        "turns": 60,
+        "attack": 24,
+        "lines": 23,
+        "quads": 1,
+        "pcs": 3,
+        "spins": 0,
+        "holds": 19,
+        "maxCombo": 3,
+        "maxB2B": 1,
+        "maxHeight": 6,
+        "meanMs": 14.88,
+        "p95Ms": 36.98
+      },
+      "after": {
+        "turns": 60,
+        "attack": 32,
+        "lines": 22,
+        "quads": 3,
+        "pcs": 1,
+        "spins": 2,
+        "holds": 16,
+        "maxCombo": 3,
+        "maxB2B": 4,
+        "maxHeight": 7,
+        "meanMs": 105.11,
+        "p95Ms": 180.34
+      }
+    },
+    {
+      "garbage": false,
+      "seed": 19,
+      "before": {
+        "turns": 60,
+        "attack": 28,
+        "lines": 22,
+        "quads": 0,
+        "pcs": 4,
+        "spins": 0,
+        "holds": 21,
+        "maxCombo": 2,
+        "maxB2B": 1,
+        "maxHeight": 4,
+        "meanMs": 10.17,
+        "p95Ms": 21.13
+      },
+      "after": {
+        "turns": 60,
+        "attack": 22,
+        "lines": 23,
+        "quads": 4,
+        "pcs": 0,
+        "spins": 1,
+        "holds": 21,
+        "maxCombo": 4,
+        "maxB2B": 3,
+        "maxHeight": 7,
+        "meanMs": 111.38,
+        "p95Ms": 175.69
+      }
+    },
+    {
+      "garbage": false,
+      "seed": 31,
+      "before": {
+        "turns": 60,
+        "attack": 25,
+        "lines": 23,
+        "quads": 2,
+        "pcs": 2,
+        "spins": 0,
+        "holds": 21,
+        "maxCombo": 3,
+        "maxB2B": 1,
+        "maxHeight": 7,
+        "meanMs": 14.91,
+        "p95Ms": 37.42
+      },
+      "after": {
+        "turns": 60,
+        "attack": 31,
+        "lines": 23,
+        "quads": 1,
+        "pcs": 4,
+        "spins": 0,
+        "holds": 16,
+        "maxCombo": 2,
+        "maxB2B": 1,
+        "maxHeight": 6,
+        "meanMs": 66.38,
+        "p95Ms": 153.39
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 7,
+      "before": {
+        "turns": 60,
+        "attack": 26,
+        "lines": 44,
+        "quads": 2,
+        "pcs": 0,
+        "spins": 0,
+        "holds": 24,
+        "maxCombo": 3,
+        "maxB2B": 2,
+        "maxHeight": 11,
+        "meanMs": 14.42,
+        "p95Ms": 21.56
+      },
+      "after": {
+        "turns": 60,
+        "attack": 27,
+        "lines": 42,
+        "quads": 2,
+        "pcs": 0,
+        "spins": 0,
+        "holds": 27,
+        "maxCombo": 5,
+        "maxB2B": 1,
+        "maxHeight": 12,
+        "meanMs": 99.49,
+        "p95Ms": 190.79
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 19,
+      "before": {
+        "turns": 60,
+        "attack": 25,
+        "lines": 45,
+        "quads": 0,
+        "pcs": 0,
+        "spins": 0,
+        "holds": 23,
+        "maxCombo": 6,
+        "maxB2B": 0,
+        "maxHeight": 14,
+        "meanMs": 15.3,
+        "p95Ms": 26.05
+      },
+      "after": {
+        "turns": 60,
+        "attack": 26,
+        "lines": 42,
+        "quads": 0,
+        "pcs": 0,
+        "spins": 2,
+        "holds": 30,
+        "maxCombo": 9,
+        "maxB2B": 1,
+        "maxHeight": 10,
+        "meanMs": 88.6,
+        "p95Ms": 188.29
+      }
+    },
+    {
+      "garbage": true,
+      "seed": 31,
+      "before": {
+        "turns": 60,
+        "attack": 33,
+        "lines": 45,
+        "quads": 4,
+        "pcs": 0,
+        "spins": 0,
+        "holds": 28,
+        "maxCombo": 3,
+        "maxB2B": 1,
+        "maxHeight": 11,
+        "meanMs": 15.06,
+        "p95Ms": 27.5
+      },
+      "after": {
+        "turns": 60,
+        "attack": 34,
+        "lines": 43,
+        "quads": 2,
+        "pcs": 1,
+        "spins": 1,
+        "holds": 25,
+        "maxCombo": 5,
+        "maxB2B": 1,
+        "maxHeight": 12,
+        "meanMs": 93.1,
+        "p95Ms": 183.07
+      }
+    }
+  ]
+}

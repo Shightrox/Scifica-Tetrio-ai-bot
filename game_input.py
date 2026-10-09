@@ -20,7 +20,7 @@ class GameInput:
     def __init__(self,target):self.target=target;self.down=set();self.lock=threading.Lock()
     def event(self,vk,up=False):
         scan=user.MapVirtualKeyW(vk,0)
-        flags=8|(1 if vk in (0x25,0x27) else 0)|(2 if up else 0)
+        flags=8|(1 if vk in (0x25,0x27,0x28) else 0)|(2 if up else 0)
         data=INPUT(type=1,u=UNION(ki=KEYBDINPUT(0,scan,flags,0,0)))
         return user.SendInput(1,C.byref(data),C.sizeof(INPUT))==1
     def tap(self,vk):

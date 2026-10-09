@@ -17,7 +17,7 @@ The build script downloads a pinned official Node.js archive and verifies its SH
 
 ```text
 dist/
-  Scifica-0.16.1-windows-x64.exe
+  Scifica-0.17.0-windows-x64.exe
   SHA256SUMS.txt
   BUILD-INFO.json
   LICENSE.txt

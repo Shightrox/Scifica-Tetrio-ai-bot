@@ -43,4 +43,20 @@ async function response(id,stage){const until=performance.now()+4000;while(perfo
  const changed=structuredClone(initial);changed.board[15][5]='G';
  send(122,changed);r=await response(122);assert(!r.continuation&&!r.cache,'new garbage invalidates a PC proof');
  console.log('PASS four-lock PC through new NEXT tails and HOLD; strategy, fifth preview and board changes invalidate reuse');
+ // Surface routes retain checkpoints/spin evidence when rebased at a new pose.
+ board=E.empty();board[17][3]='J';board[18]=[...'XXX...XXXX'].map(v=>v==='.'?null:'J');board[19]=[...'XXXX.XXXXX'].map(v=>v==='.'?null:'J');
+ s={...initial,board,piece:'T',start:E.entry('T',true),hold:null,allowHold:false,tucks:true,queue:['I','S','O','J']};
+ send(130,s);r=await response(130,'final');assert.equal(r.result.candidates[0].spin,'full');
+ send(131,{...s,start:{x:3,y:3,r:1},queue:[...s.queue,'Z']});r=await response(131,'final');
+ assert(r.cache,'a newly revealed tail can reuse verified known-prefix analysis');
+ let native=r.result.candidates[0],pos={x:3,y:3,r:1};assert.equal(native.spin,'full');
+ for(const [i,a] of native.path.entries()){pos=E.move(board,native.piece,pos,a);assert.deepEqual(pos,native.route[i].pos);}
+ assert(native.requiresSoftDrop);assert.deepEqual(pos,native.pos);
+ send(132,{...s,tucks:false});r=await response(132);assert(!r.cache);assert(!r.result.candidates[0].spin);
+ console.log('PASS native T-spin checkpoint rebase, newly revealed queue tail, movement-mode cache exclusion');
+ for(let id=140;id<150;id++){send(id,{...s,queue:['S','I','O','J','Z'],start:{x:3,y:Math.floor((id-140)/3)-2,r:0}});await wait(12);}
+ r=await response(149,'final');assert(r.result.candidates.length);
+ const nativeFirsts=[];for(let id=140;id<150;id++){const first=replies.find(r=>r.id===id&&r.result);if(first)nativeFirsts.push(first.elapsed);}
+ nativeFirsts.sort((a,b)=>a-b);
+ console.log('Native first-answer IPC ms p50/p95:',nativeFirsts[Math.floor(nativeFirsts.length*.5)].toFixed(1),nativeFirsts.at(-1).toFixed(1));
 }finally{p.stdin.end();}})().catch(e=>{console.error(e);process.exitCode=1;p.kill();});
