@@ -63,7 +63,7 @@ class TimingTests(unittest.TestCase):
                        fault!='unfocused', source='next' if fault=='next' else 'pixels')
             self.assertEqual(keys,[0x25],fault)
 
-    def test_danger_and_recovery_cancel_thinking_without_removing_base_tempo(self):
+    def test_danger_cancels_thinking_and_survival_bypasses_base_tempo(self):
         for danger in ('height', 'clearance', 'survive', 'retry'):
             bot, keys = self.bot()
             state = scene()
@@ -80,7 +80,7 @@ class TimingTests(unittest.TestCase):
         bot.last_tap_at = .3
         result = advice(state);result['candidate']['auto']['mode'] = 'survive'
         bot.update(.4, state, result, .4, True)
-        self.assertFalse(keys)
+        self.assertEqual(keys,[0x20])
         bot.update(.81, state, result, .81, True)
         self.assertEqual(keys, [0x20])
 

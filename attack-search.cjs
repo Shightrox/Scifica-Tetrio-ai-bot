@@ -14,6 +14,7 @@ function decorate(sequence){
   return sequence;
 }
 function find(state,{maxMs=32,maxNodes=140,maxPieces=6}={}){
+  if(E.autoPolicy(E.metrics(state.board)).mode==='survive')return {nodes:0,sequence:null};
   const deadline=performance.now()+maxMs,limit=Math.min(maxPieces,1+state.queue.length);
   let nodes=0,best=null,bestValue=-Infinity;const seen=new Map();
   function visit(s,sequence,value){

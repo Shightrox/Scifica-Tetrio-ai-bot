@@ -91,7 +91,7 @@ class AutoPlayer:
         HOLD shares the placement's rhythm. Fresh pixels can shorten a wait as
         the piece falls or danger rises. Acknowledgements run before this gate.
         """
-        if candidate.get('inTuck'):return True # finish before lock delay; feedback still runs first
+        if candidate.get('inTuck') or candidate.get('auto',{}).get('mode')=='survive':return True # feedback still runs first
         strength=self.dynamic_tempo/100
         safety=self.tempo_safety(state,candidate,observed) if strength else 0
         if strength and self.timing_started is None:
@@ -155,6 +155,15 @@ class AutoPlayer:
     def stop(self,reason='Stopped'):
         self.pose=None
         self.enabled=False;self.phase='off';self.reason=reason;self.plan=None;self.waiting=None;self.early_spawn=None;self.recovery=None;self.release()
+
+    def reset_round(self):
+        """Discard every previous-round action without changing armed state."""
+        self.release();self.plan=None;self.waiting=None;self.recovery=None;self.early_spawn=None
+        self.pose=None;self.last_state=None;self.planning_key=None;self.paused_at=None
+        self.chain={'combo':0,'b2b':0};self.placed=0;self.retries=0;self.failed_motion=None
+        self.hold_blocked=False;self.held_piece=None;self.verified_hold=None;self.hold_verified=False
+        self.human_considered=False;self.last_tap_at=float('-inf');self.reset_rhythm();self.revision+=1
+        self.phase='ready' if self.enabled else 'off';self.reason='New round verified' if self.enabled else 'Autopilot disarmed'
 
     def resolve_pose(self,state,source,frame_at):
         """Keep true SRS orientation only when pixels support an observed move.
@@ -293,10 +302,7 @@ class AutoPlayer:
         previous=self.last_state
         self.last_state=state
         if previous and state.get('roundId',0)!=previous.get('roundId',0):
-            self.release();self.plan=None;self.waiting=None;self.chain={'combo':0,'b2b':0}
-            self.hold_blocked=False;self.held_piece=None;self.verified_hold=None;self.hold_verified=False
-            self.pose=None;self.revision+=1;self.reset_rhythm();self.human_considered=False
-            self.phase='ready';self.reason='New round verified';return
+            self.reset_round();self.last_state=state;return
         if observed and self.natural_lock(previous,state):return
         if self.recovery is not None:
             r=self.recovery
@@ -427,7 +433,7 @@ class AutoPlayer:
             if state.get('chain',self.chain)!=self.chain:return
             planning_key=(tuple(tuple(r) for r in state['board']),state['piece'],state.get('generation'))
             if planning_key!=self.planning_key:self.planning_key=planning_key;self.planning_at=now
-            wait_budget=.02 if advice['candidate'].get('auto',{}).get('mode')=='survive' else .04
+            wait_budget=(0 if advice['candidate'].get('lookahead',1)>=2 else .02) if advice['candidate'].get('auto',{}).get('mode')=='survive' else .04
             if advice['stage'] in ('fast','refined') and now-self.planning_at<wait_budget:
                 self.reason='Refining with NEXT';return
             c=advice['candidate']

@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import overlay
@@ -132,10 +133,33 @@ def run():
             assert app.player.vk['180'] is None and app.player.enabled and app.player.recovery
             assert app.player.waiting['action']=='HOLD'
             app.change_rotation_key(0x41);app.player.stop('Check finished')
+
+            # A round ID may arrive after the one-frame reset event has already
+            # been replaced in the capture queue. Reset BEFORE building search
+            # state, and discard a delayed answer from the preceding round.
+            app.player.start(0);app.player.chain={'combo':9,'b2b':12};app.player.hold_blocked=True
+            app.player.verified_hold='I';app.player.hold_verified=True
+            app.player.waiting={'action':'HOLD'};app.player.recovery={'old':True}
+            app.vision_round=(app.reader_epoch,0);app.reading=True
+            app.job={'id':-99,'key':'old','at':time.perf_counter()};app.current_key='old';app.advice={'old':True}
+            app.answers.put({'worker':app.solver_generation,'id':-99,'stage':'final','result':{'candidates':[{'old':True}]}})
+            fresh={'board':[[None]*10 for _ in range(20)],'active':{'piece':'T','start':dict(x=3,y=1,r=0)},
+                   'queue':['I','O','S'],'roundId':1,'generation':4,'ambiguous':0,'source':'pixels',
+                   'hold':None,'holdKnown':True,'event':'steady'}
+            app.frames.put({'epoch':app.reader_epoch,'vision':fresh,'at':time.perf_counter(),'capture_ms':0,'vision_ms':0})
+            with patch.object(app,'send_pending'),patch.object(app,'draw'),patch.object(user,'GetForegroundWindow',return_value=app.control_handle),patch.object(user,'GetAsyncKeyState',return_value=0):
+                app.tick()
+            assert app.player.enabled and app.player.waiting is None and app.player.recovery is None
+            assert app.job is None and app.advice is None
+            state=app.pending[0]
+            assert state['roundId']==1 and state['chain']=={'combo':0,'b2b':0}
+            assert state['canHold'] and state['hold'] is None and state['controllerRevision']==app.player.revision
+            app.reading=False;app.player.stop('Check finished')
             print('PASS 40 drag cycles / 4,000 queued positions, exact release, negative x,')
             print('     title bindings, stable child layout, minimize/restore and taskbar styles')
             print('PASS strategy change preserves pending DROP evidence and armed state while replanning')
             print('PASS rotation binding change preserves pending HOLD and armed state while replanning')
+            print('PASS round transition resets HOLD/chain before search and rejects late preceding-round answers')
         finally:
             app.close()
             for handler in list(app.events.handlers):

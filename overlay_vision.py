@@ -237,10 +237,45 @@ class Reader:
         self.pending_age=0
         self.inferred_frames=0
         self.hold=None;self.hold_known=False;self.hold_sample=None;self.hold_count=0
-        self.unstable_board=None;self.unstable_count=0;self.unstable_queue=[];self.unstable_advanced=False
+        self.unstable_board=None;self.unstable_count=0
         self.inferred_at=None;self.partial_pose=None;self.partial_count=0
         self.colour_templates={}
         self.round_id=0;self.blocked_at=None
+        self.accepted_queue=[];self.round_probe=None
+
+    def probe_round(self,extended,queue,blocked,notice):
+        """Recognize a new empty round before restoring old cells under masks.
+
+        Compare with the last *accepted* preview: countdown animation may have
+        already replaced the raw NEXT samples long before spawn is visible.
+        """
+        previous=self.accepted_queue
+        overlap=min(len(previous),len(queue));shift=min(3,len(previous)-1,len(queue))
+        changed=overlap>=2 and previous[:overlap]!=queue[:overlap]
+        advanced=shift>=2 and queue[:shift]==previous[1:shift+1]
+        evidence=self.hold_known and self.hold is None or self.blocked_at is not None and time.perf_counter()-self.blocked_at<3
+        if self.locked is None or blocked or notice or not evidence or not changed or advanced or len(queue)<3:
+            self.round_probe=None;return None
+        for ident,name in enumerate(TYPES[1:8],1):
+            # The first usable frame may arrive after gravity has moved spawn
+            # well into the empty grid. Require its column/orientation, not y.
+            ys,xs=np.nonzero(extended==ident)
+            points=[(int(x),int(y)-4) for x,y in zip(xs,ys)]
+            candidate=fit_active(points,ident)
+            if not candidate:continue
+            pos=candidate['start']
+            if pos['r']!=0 or pos['x']!=(4 if name=='O' else 3) or not -3<=pos['y']<20:continue
+            remaining=extended[4:].copy()
+            for x,y in points:
+                if y>=0:remaining[y,x]=0
+            if remaining.any():continue
+            signature=(name,pos['x'],tuple(queue))
+            old=self.round_probe
+            count=old[1]+1 if old and old[0]==signature else 1
+            self.round_probe=(signature,count)
+            if count>=3:return candidate
+            return None
+        self.round_probe=None;return None
 
     def legal_lock(self, observed):
         """Verify a lock/line clear against the last known settled stack.
@@ -346,6 +381,20 @@ class Reader:
         y1=max(0,round(top+cell*.6));y2=min(h,round(top+cell*16))
         queue=preview_pieces(rgb[y1:y2,x1:x2],cell) if x2>x1 and y2>y1 else []
         queue=queue[:5]
+        fresh=self.probe_round(extended,queue,blocked,notice)
+        if self.round_probe and not fresh:
+            return {'board':[[TYPES[int(v)] or None for v in row] for row in self.locked],'active':None,'queue':queue,'ambiguous':1,
+                    'event':'round-probe','source':'pixels','generation':self.generation,'roundId':self.round_id,
+                    'garbage_rise':0,'hold':self.hold,'holdKnown':self.hold_known,'spawnAgeMs':None,'blocked':None,'noticeCells':0}
+        if fresh:
+            self.round_id+=1;self.generation+=1
+            self.locked=np.zeros((20,10),np.uint8);self.last_active=fresh
+            self.queue=queue[:];self.accepted_queue=queue[:];self.pending_spawn=None;self.pending_age=0
+            self.inferred_at=None;self.partial_pose=None;self.partial_count=0;self.inferred_frames=0
+            self.unstable_count=0;self.unstable_board=None;self.round_probe=None;self.blocked_at=None
+            return {'board':[[None]*10 for _ in range(20)],'active':fresh,'queue':queue,'ambiguous':0,
+                    'event':'round-reset','source':'pixels','generation':self.generation,'roundId':self.round_id,
+                    'garbage_rise':0,'hold':self.hold,'holdKnown':self.hold_known,'spawnAgeMs':None,'blocked':None,'noticeCells':0}
         old_queue=self.queue[:]
         count=min(3,len(old_queue)-1,len(queue))
         advanced=count>=2 and queue!=old_queue and queue[:count]==old_queue[1:count+1]
@@ -452,7 +501,7 @@ class Reader:
                 if y>=0:board[y,x]=0
             if blocked:
                 return {'board':None,'active':active,'queue':queue,'ambiguous':ambiguous,
-                        'event':'occluded','source':'pixels','generation':self.generation,'garbage_rise':0,
+                        'event':'occluded','source':'pixels','generation':self.generation,'roundId':self.round_id,'garbage_rise':0,
                         'hold':self.hold,'holdKnown':self.hold_known,'spawnAgeMs':None,'blocked':blocked}
             if notice:
                 same=np.array_equal(board>0,self.locked>0)
@@ -471,21 +520,10 @@ class Reader:
                 board=self.locked.copy()
             if self.locked is not None and not np.array_equal(self.locked,board) and not self.legal_lock(board):
                 if self.unstable_board is not None and np.array_equal(self.unstable_board,board):self.unstable_count+=1
-                else:self.unstable_board=board.copy();self.unstable_count=1;self.unstable_queue=old_queue;self.unstable_advanced=advanced
+                else:self.unstable_board=board.copy();self.unstable_count=1
                 # Repeated occlusion is not evidence of a legal board change.
-                # A fresh round needs an empty stack, a spawn, a new preview,
-                # and an independently empty HOLD or preceding game screen.
-                overlap=min(len(queue),len(self.unstable_queue))
-                fresh_round=(self.unstable_count>=8 and not board.any() and active['start']['y']<=0
-                             and len(queue)>=3 and overlap>=2 and queue[:overlap]!=self.unstable_queue[:overlap]
-                             and not advanced and not self.unstable_advanced
-                             and (self.hold_known and self.hold is None or self.blocked_at is not None and time.perf_counter()-self.blocked_at<3))
-                if fresh_round:
-                    self.round_id+=1;self.generation+=1;event='round-reset'
-                    self.last_active=None;self.blocked_at=None;self.unstable_count=0;self.unstable_board=None
-                else:
-                    active=None;active_points=[];ambiguous=max(1,ambiguous);event='unstable'
-                    board=self.locked.copy()
+                active=None;active_points=[];ambiguous=max(1,ambiguous);event='unstable'
+                board=self.locked.copy()
             else:self.unstable_count=0;self.unstable_board=None
         if active:
             if source=='pixels' and active_points and not any(y>=0 and masked[y,x] for x,y in active_points):
@@ -496,6 +534,7 @@ class Reader:
                 self.generation+=1;event='lock' if advanced else 'new-piece'
             self.locked=board.copy()
             self.last_active=active
+            if queue:self.accepted_queue=queue[:]
             self.pending_spawn=None
             self.inferred_frames=self.inferred_frames+1 if source=='next' else 0
             if source!='next':self.inferred_at=None

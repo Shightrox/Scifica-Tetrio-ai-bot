@@ -10,7 +10,7 @@ if(!isMainThread){
   parentPort.on('message',m=>{
     const at=performance.now();
     try{
-      const pressure=m.state.attackPriority&&m.state.profile==='versus';
+      const pressure=m.state.attackPriority&&m.state.profile==='versus'&&E.autoPolicy(E.metrics(m.state.board)).mode!=='survive';
       if(m.state.tucks)parentPort.postMessage({key:m.key,partial:true,result:E.analyze({...m.state,depth:2,rootLimit:4,beamWidth:2}),ms:performance.now()-at});
       const pc=pressure?PC.find(m.state):null;
       let result,continuation=null;
@@ -46,7 +46,7 @@ if(!isMainThread){
   const emit=v=>process.stdout.write(JSON.stringify(v)+'\n');
   const shapeKey=c=>c.piece+':'+E.SHAPES[c.piece][c.pos.r].map(([x,y])=>(y+c.pos.y)*10+x+c.pos.x).sort((a,b)=>a-b).join(',')+':'+(c.spin||'');
   function rerouted(c,p){
-    const weight=c.auto?.mode==='survive'?.9:c.auto?.mode==='attack'?.3:.45;
+    const weight=c.auto?.mode==='survive'?.12:c.auto?.mode==='attack'?.3:.45;
     const adjustment=((c.routeCost||0)-(p.routeCost||0))*weight;
     return {...c,pos:p.pos,path:p.path,route:p.route,requiresSoftDrop:p.requiresSoftDrop,routeCost:p.routeCost,surfaceDescents:p.surfaceDescents,
       value:c.value+adjustment,score:c.score+adjustment,stepReward:c.stepReward+adjustment};
@@ -81,7 +81,7 @@ if(!isMainThread){
     }
   }
   function continuation(state){
-    if(!state.attackPriority){continuations=[];return null;}
+    if(!state.attackPriority||E.autoPolicy(E.metrics(state.board)).mode==='survive'){continuations=[];return null;}
     for(const item of continuations){
       const s=item.state;
       if(s.piece!==state.piece||(s.hold||null)!==(state.hold||null)||s.profile!==state.profile||
@@ -165,7 +165,10 @@ if(!isMainThread){
       }
       // An unreachable cached top-three is not an answer for this pose.
       if(hit){cache.delete(hitKey);proofs.delete(hitKey);contexts.delete(hitKey);}
-      const quick=E.analyze({...state,depth:1});
+      const rescue=state.profile==='versus'&&E.autoPolicy(E.metrics(state.board)).mode==='survive';
+      // Emergency execution must see NEXT before committing, not wait for a
+      // later depth-six answer that usually arrives after the piece is placed.
+      const quick=E.analyze({...state,depth:rescue?2:1,...(rescue?{rootLimit:6,beamWidth:2,futureTucks:false}:{})});
       emit({id:m.id,stage:'fast',result:quick,cache:false,ms:performance.now()-at});
       if(state.queue.length&&m.refine!==false)deepen(state,key);
       else emit({id:m.id,stage:'done'});

@@ -78,6 +78,7 @@ class Overlay:
         self.player=AutoPlayer(self.game_input.tap,self.game_input.release,soft_drop=self.game_input.hold_down)
         self.live_state=None;self.last_image_at=0;self.ambiguity=0;self.garbage_seen=0
         self.selector=None;self.reader_epoch=0;self.control_visible=True;self.hotkeys=[];self.key_events=queue.Queue()
+        self.vision_round=None
         node=node_executable()
         self.node=node;self.solver_generation=0;self.solver_retry_at=None;self.solver_failures=0
         self.start_solver()
@@ -378,6 +379,10 @@ class Overlay:
                     self.spawn_age_ms=v.get('spawnAgeMs')
                     self.game_blocked=v.get('blocked')
                     self.notice_cells=v.get('noticeCells',0)
+                    round_key=(f['epoch'],v.get('roundId',0))
+                    if self.vision_round and self.vision_round[0]==round_key[0] and self.vision_round[1]!=round_key[1]:
+                        self.player.reset_round();self.current_key=None;self.pending=None;self.advice=None;self.job=None
+                    self.vision_round=round_key
                     self.detected_hold=v.get('hold');self.hold_known=v.get('holdKnown',False)
                     held,hold_known=self.player.resolve_hold(self.detected_hold,self.hold_known)
                     self.last_image_at=f['at'];self.ambiguity=v['ambiguous'];self.garbage_seen+=v.get('garbage_rise',0)

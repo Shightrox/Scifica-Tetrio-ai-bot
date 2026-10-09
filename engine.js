@@ -66,15 +66,19 @@
     let wellDepth=0;for(let y=H-heights[well]-1;y>=0;y--){if(!b[y].every((v,x)=>x===well||v))break;wellDepth++;}
     let bump=0;for(let x=1;x<W;x++){const d=Math.abs(heights[x]-heights[x-1]);bump+=d;if(!wellDepth||x!==well&&x-1!==well)roughness+=d*d;}
     const center=Math.max(...heights.slice(3,7));
-    return {holes,buried,heights,holeCells,bump,roughness,garbageCover,well,wellDepth,center,height:Math.max(...heights),total:heights.reduce((a,b)=>a+b,0)};
+    const garbageRows=garbage.filter(Boolean).length,topGarbage=garbage.indexOf(true);
+    // Clear the first garbage entrance before optimizing holes deeper below it.
+    const garbageAccess=topGarbage<0?0:Math.min(20,...b[topGarbage].map((v,x)=>v?Infinity:b.slice(0,topGarbage).filter(r=>r[x]).length));
+    return {holes,buried,heights,holeCells,bump,roughness,garbageCover,garbageRows,garbageAccess,well,wellDepth,center,height:Math.max(...heights),total:heights.reduce((a,b)=>a+b,0)};
   }
   function utility(m,lines){return lines*9-m.total*.44-m.holes*13-m.buried*.7-m.bump*.25-m.roughness*.18-m.garbageCover*2.5
     -Math.max(0,m.height-10)**2*1.6-Math.max(0,m.height-15)**2*5-Math.max(0,m.center-13)**2*2;}
   function autoPolicy(m){
-    const danger=m.height>=13||m.garbageCover>=8||m.holes>=6;
-    const constrained=m.height>=9||m.garbageCover>=2||m.holes>=2;
+    const garbageDanger=m.garbageRows>=4||m.garbageRows>0&&m.height>=11;
+    const danger=m.height>=13||garbageDanger||m.garbageCover>=8||m.holes>=6;
+    const constrained=m.height>=9||m.garbageRows>=2&&m.height>=7||m.garbageCover>=2||m.holes>=2;
     const mode=danger?'survive':constrained?'balance':'attack';
-    const reason=m.height>=13?'height':m.garbageCover>=8?'garbage':m.holes>=6?'holes':constrained?'space':'room';
+    const reason=m.height>=13?'height':garbageDanger||m.garbageCover>=8?'garbage':m.holes>=6?'holes':constrained?'space':'room';
     return {mode,reason};
   }
   function setupPotential(m,queue,hold,allowHold){
@@ -222,10 +226,11 @@
   function evaluate(c,before,chain,profile,simpleOnly,allowHold,attackPriority=false,tucks=false,rules={}){
     c.chain=tactical(c,chain,profile);
     const m=c.metrics;c.auto=autoPolicy(before);c.attackPriority=!!attackPriority;
+    if(rules.survival)c.auto={mode:'survive',reason:c.auto.mode==='survive'?c.auto.reason:'recovery'};
     const danger=c.auto.mode==='survive',attack=c.auto.mode==='attack';
     const damage=c.chain.reward-5*c.lines;
     const newHoles=Math.max(0,m.holes-before.holes),newCover=Math.max(0,m.garbageCover-before.garbageCover);
-    c.stepReward=profile==='versus'?(danger?8:5)*c.lines+damage*(danger?.55:attack?1.3:1.1):c.chain.reward;
+    c.stepReward=profile==='versus'?(danger?14*c.lines+24*(c.garbageCleared||0):5*c.lines+damage*(attack?1.3:1.1)):c.chain.reward;
     const pressure=attackPriority&&profile==='versus'&&!danger;
     if(pressure){
       c.stepReward+=c.chain.attackEstimate*(attack?16:9)-2*c.lines;
@@ -234,17 +239,19 @@
     if(profile==='versus'&&!danger&&c.lines&&chain.combo)c.stepReward+=Math.min(12,4+chain.combo*2)*(attack?1:.5);
     // These costs apply to every intermediate board, not just the search leaf.
     c.stepReward-=newHoles*8+Math.max(0,m.buried-before.buried)*.5+newCover*3;
-    if(danger)c.stepReward-=Math.max(0,m.height-before.height)*5;
-    c.stepReward-=(c.routeCost??c.path.filter(a=>a!=='D').length)*(danger?.9:attack?.3:.45)+(c.useHold?.5:0);
+    if(danger)c.stepReward-=Math.max(0,m.height-before.height)*12+newHoles*12+Math.max(0,m.garbageAccess-before.garbageAccess)*12;
+    // A real downstack tuck must not lose to a tower just because it needs SD.
+    c.stepReward-=(c.routeCost??c.path.filter(a=>a!=='D').length)*(danger?.12:attack?.3:.45)+(c.useHold?.5:0);
     c.nextSafe=true;
-    if(c.nextQueue.length&&m.height>=16){
+    if(c.nextQueue.length&&m.height>=(danger?12:16)){
       const next=c.nextQueue[0],held=c.newHold||c.nextQueue[1];
       c.nextSafe=placements(c.board,next,entry(next,simpleOnly),simpleOnly,true,tucks,rules).length>0
         ||!!(allowHold&&held&&placements(c.board,held,entry(held,simpleOnly),simpleOnly,true,tucks,rules).length);
     }
     c.safety=danger?'downstack':'balanced';
     c.setup=profile==='versus'?setupPotential(m,c.nextQueue,c.newHold,allowHold):0;
-    c.terminal=positionValue(m,c.nextQueue,c.newHold,allowHold,profile);
+    c.terminal=danger?utility(m,0)-m.garbageRows*18-m.garbageAccess*24-Math.max(0,m.height-8)**2*2
+      :positionValue(m,c.nextQueue,c.newHold,allowHold,profile);
     if(pressure){
       // Value a banked B2B chain once at the leaf, not on every empty lock.
       // A second deep, narrow well competes for the I needed to attack.
@@ -255,10 +262,10 @@
     c.score=c.terminal+c.stepReward+(c.nextSafe?0:-1000000);
     return c;
   }
-  function analyze({board,piece,queue=[],hold=null,start=null,depth=2,allowHold=true,canHold=true,rootLimit=12,beamWidth=5,simpleOnly=false,profile='classic',chain={combo:0,b2b:0},attackPriority=false,tucks=false,rotationSystem='srs',allow180=false,maxMs=Infinity}){
+  function analyze({board,piece,queue=[],hold=null,start=null,depth=2,allowHold=true,canHold=true,rootLimit=12,beamWidth=5,simpleOnly=false,profile='classic',chain={combo:0,b2b:0},attackPriority=false,tucks=false,futureTucks=tucks,rotationSystem='srs',allow180=false,maxMs=Infinity}){
     const deadline=performance.now()+maxMs;
-    const rules={rotationSystem,allow180};
     const before=metrics(board);
+    const rules={rotationSystem,allow180,survival:profile==='versus'&&autoPolicy(before).mode==='survive'};
     const options=choices(board,piece,queue,hold,start,simpleOnly,allowHold&&canHold,tucks,rules);
     for(const c of options)evaluate(c,before,chain,profile,simpleOnly,allowHold,attackPriority,tucks,rules);
     options.sort((a,b)=>b.score-a.score);
@@ -287,7 +294,7 @@
         for(const state of beam){
           if(performance.now()>=deadline){budgetHit=true;break search;}
           if(!state.queue.length){next.push({...state,rank:state.value+state.terminal});continue;}
-          const ps=choices(state.board,state.queue[0],state.queue.slice(1),state.hold,null,simpleOnly,allowHold,tucks,rules);
+          const ps=choices(state.board,state.queue[0],state.queue.slice(1),state.hold,null,simpleOnly,allowHold,futureTucks,rules);
           const previous=metrics(state.board);
           for(const p of ps){evaluate(p,previous,state.chain,profile,simpleOnly,allowHold,attackPriority,tucks,rules);p.rank=p.score;}
           ps.sort((a,b)=>b.rank-a.rank);

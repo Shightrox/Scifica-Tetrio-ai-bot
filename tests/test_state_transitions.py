@@ -107,4 +107,47 @@ class TransitionTests(unittest.TestCase):
         for _ in range(12):v=r.read(frame,200,400,top=80)
         self.assertEqual(v['roundId'],0);self.assertIsNone(v['active']);self.assertEqual(v['board'],board)
 
+    def test_countdown_preview_does_not_hide_the_round_transition(self):
+        for old_empty,fall in ((False,(1,2,3)),(True,(1,2,3)),(False,(15,16,17)),(True,(15,16,17))):
+            with self.subTest(old_empty=old_empty,fall=fall):
+                board=blank()
+                if not old_empty:board[19][0]='L'
+                r=Reader();pos=dict(x=3,y=-2,r=0);old=['I','O','S'];new=['Z','L','T']
+                r.read(pixels(board,'T',pos,old),200,400,top=80)
+                r.hold_known=True;r.hold=None
+                for _ in range(5):r.read(pixels(blank(),nexts=new),200,400,top=80)
+                self.assertEqual(r.queue,new);self.assertEqual(r.accepted_queue,old)
+                # At high gravity the spawn has entered the visible grid before
+                # three frames arrive. Falling must not restart the round probe.
+                for y in fall:v=r.read(pixels(blank(),'J',dict(pos,y=y),new),200,400,top=80)
+                self.assertEqual(v['event'],'round-reset');self.assertEqual(v['roundId'],1)
+                self.assertEqual(v['active']['piece'],'J');self.assertEqual(v['board'],blank())
+                self.assertEqual(r.accepted_queue,new)
+                with patch('overlay_vision.game_overlay',return_value='game-screen'):
+                    blocked=r.read(pixels(blank(),'J',dict(pos,y=fall[-1]),new),200,400,top=80)
+                self.assertEqual(blocked['roundId'],1,'focus notices must retain the new round ID')
+
+    def test_new_round_cancels_pending_actions_and_recovery_without_disarming(self):
+        for action in ('DROP','HOLD','SD'):
+            with self.subTest(action=action):
+                keys=[];released=[];bot=AutoPlayer(lambda k:keys.append(k) or True,lambda:released.append(True))
+                bot.start(0);bot.configure(2,100,100);before={**scene(),'roundId':0};bot.last_state=before
+                bot.plan={'old':True};bot.waiting={'action':action};bot.early_spawn={'old':True}
+                bot.recovery={'after':99,'stamp':None,'count':0,'frame':None};bot.failed_motion={'old':True}
+                bot.chain={'combo':8,'b2b':7};bot.placed=40;bot.hold_blocked=True
+                bot.hold_verified=True;bot.verified_hold='I';bot.retries=4;bot.human_considered=True
+                bot.timing_started=.4;bot.last_tap_at=.4
+                fresh={**scene(),'roundId':1,'generation':2}
+                bot.update(.5,fresh,None,.5,True)
+                self.assertTrue(bot.enabled);self.assertEqual(bot.phase,'ready');self.assertEqual(keys,[])
+                self.assertTrue(released);self.assertIsNone(bot.waiting);self.assertIsNone(bot.plan)
+                self.assertIsNone(bot.recovery);self.assertIsNone(bot.failed_motion);self.assertIsNone(bot.early_spawn)
+                self.assertEqual(bot.chain,{'combo':0,'b2b':0});self.assertEqual(bot.placed,0)
+                self.assertEqual(bot.retries,0);self.assertFalse(bot.hold_blocked);self.assertFalse(bot.hold_verified)
+                self.assertEqual((bot.key_rate,bot.humanization,bot.dynamic_tempo),(2,100,100))
+                bot.configure(30,0,0);bot.update(.54,fresh,advice(fresh),.54,True)
+                self.assertEqual(keys,[0x20],'the next round must execute without a Stop/Start toggle')
+                bot.stop();bot.reset_round();bot.update(.6,fresh,advice(fresh),.6,True)
+                self.assertFalse(bot.enabled);self.assertEqual(bot.phase,'off');self.assertEqual(keys,[0x20])
+
 if __name__=='__main__':unittest.main()

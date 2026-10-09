@@ -21,6 +21,11 @@ async function run(crash){
   send(4,{...s,start:{x:7,y:5,r:0}});await wait(4,'fast');r=await wait(4,'final');
   assert(r.result.candidates.length&&r.result.candidates.every(c=>c.pos.x>=7));
   console.log('PASS longer NEXT gets fresh deep search; unreachable cached landings cannot suppress refinement');
+  send(5,require('./survival-cases.json').at(-1));r=await wait(5,'fast');
+  assert.equal(r.result.candidates[0].lookahead,2,'first emergency response already sees NEXT');
+  assert.equal(r.result.candidates[0].lines,1);assert.equal(r.result.candidates[0].auto.mode,'survive');
+  r=await wait(5,'final');assert(!r.continuation);assert.equal(r.result.candidates[0].intent,'downstack');
+  console.log('PASS live solver returns two-piece survival before background refinement');
  }finally{p.stdin.end();setTimeout(()=>{if(p.exitCode===null)p.kill();},1000).unref();}
 }
 (async()=>{await run(false);await run(true);})().catch(e=>{console.error(e);process.exitCode=1;});

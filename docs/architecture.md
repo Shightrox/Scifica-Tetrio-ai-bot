@@ -20,7 +20,7 @@ When attack priority is enabled, `perfect-clear.cjs` first attempts a low-field 
 
 PC continuations retain expected boards, active/HOLD pieces, chain state and known queue prefixes. Newly revealed preview tails are allowed; conflicting known pieces are not. Every reused landing is rerouted from the current observed pose. A predicted HOLD has a separate post-exchange continuation, so the replacement piece does not lose the PC plan. Risen garbage, mismatched chains, unavailable HOLD or strategy changes reject reuse. The first answer and input verification stay on their existing paths.
 
-The pilot normally gives a shallow/intermediate result up to 40 ms for refinement, reduced to 20 ms under survival pressure. This is a refinement budget, not a promise about total latency. While an observed piece is near spawn, one later, deeper result may replace the route after the pending key has been acknowledged. A tuck already in progress cannot be changed this way.
+The pilot normally gives a shallow/intermediate result up to 40 ms for refinement. An emergency first answer searches two placements with six roots and beam width two, using native root routes but straight-drop future routes. With two pieces already considered it needs no additional refinement wait; a one-piece survival answer retains a 20 ms allowance. Background search includes future tucks. These are refinement budgets, not promises about total latency. While an observed piece is near spawn, one later, deeper result may replace the route after the pending key has been acknowledged. A tuck already in progress cannot be changed this way.
 
 `attack-search.cjs` additionally searches consecutive clears over at most six known placements, including HOLD, with a 32 ms / 140-node budget. Individual placement enumeration may finish just beyond that time boundary. Its verified continuation uses the same board/queue/HOLD checks as a PC proof. This is a search horizon, not a maximum lifetime combo length.
 
@@ -30,9 +30,11 @@ The pilot normally gives a shallow/intermediate result up to 40 ms for refinemen
 | --- | --- | --- |
 | Attack | Low stack and accessible field | Quads, short clear chains, perfect clears, usable future setup |
 | Balance | Height at least 9, or growing hole/garbage debt | Keep future opportunities without losing access |
-| Survive | Height at least 13, substantial garbage burial, or many holes | Reduce danger and preserve a playable next spawn |
+| Survive | Height at least 13, at least 4 garbage rows, any garbage at height 11+, substantial burial, or many holes | Clear the garbage entrance, reduce height and preserve a playable next spawn |
 
 Exact triggers live in `autoPolicy()` in `engine.js`. Every intermediate board is penalized for new holes, burial and dangerous growth. A prepared I-piece well earns setup credit only when an I is known in available HOLD or the short preview. Setup reward is capped at four layers and removed in survival mode. A promising preparation branch can be retained in the beam; it is not rewarded once per search step.
+
+An emergency root keeps survival scoring throughout its search horizon, including hypothetical later boards that would individually qualify for attack. Clears and garbage removal receive direct rewards; height, new holes and cover over the upper garbage entrance receive stronger penalties. Future spawn reachability is checked from height twelve. Input cost matters less so a useful rescue tuck is not rejected for its soft drop. Dedicated PC/attack passes and stored attack continuations are bypassed in survival. This preserves low-stack combo search without allowing it to displace rescue. [Regression evidence](survival-v0.19.1.md).
 
 The evaluator tracks approximate combo/B2B state after verified locks. Consecutive clears can justify a temporary local cost when a reachable continuation removes it. Unmodeled board transitions reset the chain instead of pretending the attack history is known. Native spin detection requires the route to finish in rotation: T uses three occupied corners, its front corners and fifth-kick promotion; other immobile shapes and cornerless immobile T shapes count as minis. The estimate approximates All-Mini+ and does not model custom spin tables or incoming cancellation.
 
@@ -61,11 +63,13 @@ A stable Dijkstra queue first minimizes intermediate surface descents, then weig
 
 The controller pauses on a stale/ambiguous frame, focus loss, a blocking game message, panel overlap or a held modifier. A temporary pause is different from explicit Stop. No screenshot alone can prove the position of a fully hidden piece.
 
+Round detection compares NEXT against the last accepted queue, which countdown frames cannot overwrite. Three observations of an empty field and an unrotated spawn-column piece, a non-shifted new preview, and empty-HOLD or recent blocking-screen evidence trigger a persistent round ID change. Vertical falling does not restart this probe. Before constructing the new search state, orchestration clears pending actions, recovery, pose, HOLD history, chain state and old search replies while preserving whether the pilot is armed. Focus-notice frames also retain the round ID. An explicitly stopped pilot never starts itself.
+
 ## Speed and humanization
 
 `preferences.py` validates finite values and writes settings atomically. The panel applies changes live. Autopilot arming and capture geometry are never restored from settings.
 
-Speed limits the interval between ordinary movement taps, after handling acknowledgement and recovery. A final aligned hard drop and active tuck execution bypass this interval. It never sleeps the capture or search loop. The slider runs from 2 to 29 keys/s, with 30 representing **MAX**, which adds no fixed wait. Humanization can vary the nominal interval by up to ±12%, so it is a target tempo rather than a strict rate limiter.
+Speed limits the interval between ordinary movement taps, after handling acknowledgement and recovery. Survival, a final aligned hard drop and active tuck execution bypass this interval. It never sleeps the capture or search loop. The slider runs from 2 to 29 keys/s, with 30 representing **MAX**, which adds no fixed wait. Humanization can vary the nominal interval by up to ±12%, so it is a target tempo rather than a strict rate limiter.
 
 At an eligible piece's first plan, humanization is the probability of adding a pair such as `Left, Right`. Eligibility requires an observed pose near spawn, a low stack, enough landing clearance, and no recovery or survival pressure. Both taps use the ordinary acknowledgement path. The original route follows only after the return is verified. A board change or failed tap discards the detour and replans. Turning the slider to zero during a pair still allows its pending correction; it does not blindly assume the piece returned.
 
@@ -73,7 +77,7 @@ No search quality is traded for humanization. These controls do not change AUTO'
 
 Dynamic tempo is an independent 0–100% strength setting, disabled by default. A placement samples one 80–260 ms thought delay (25% chance of another 80–200 ms) and a 0.7–1.3 rhythm factor. Successful taps sample 25–100 ms times that factor, with an 18% chance of another 30–90 ms hesitation. The slider scales both types of delay. Thought and tap deadlines overlap; no `sleep` is introduced. Thought timing starts with the first usable candidate and does not reset when the pose, advice or HOLD changes. A verified lock resets the rhythm for the next placement. Recovery cancels thought timing and the extra tap delay.
 
-Each fresh observation scales the added waits: 35% with six-to-nine cells of landing clearance or a pose below the spawn area; zero at five or fewer cells, any occupied cell in the top eleven rows, survival, inferred-only poses or retries. Once the thought gate opens, it stays open for that placement. The base Speed interval remains independent. Pending acknowledgements, stale-frame and focus checks always run before pacing. Setting Dynamic tempo to zero releases an existing artificial wait on the next eligible update.
+Each fresh observation scales the added waits: 35% with six-to-nine cells of landing clearance or a pose below the spawn area; zero at five or fewer cells, any occupied cell in the top eleven rows, survival, inferred-only poses or retries. Once the thought gate opens, it stays open for that placement. Survival bypasses both these waits and the base Speed interval; ordinary pacing returns after rescue without changing preferences. Pending acknowledgements, stale-frame and focus checks always run before pacing. Setting Dynamic tempo to zero releases an existing artificial wait on the next eligible update.
 
 ## UI and local data
 
