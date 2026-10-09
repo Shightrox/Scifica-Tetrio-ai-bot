@@ -20,8 +20,8 @@ def scene(x=3,y=-2):
 def advice(state,path=None,dx=0):
     pos=landing(state['board'],state['piece'],dict(state['start'],x=state['start']['x']+dx))
     board=copy.deepcopy(state['board'])
-    for x,y in cells('T',pos): board[y][x]='T'
-    return dict(state=state,stage='final',candidate=dict(piece='T',path=path or [],pos=pos,board=board,auto={'mode':'attack'}))
+    for x,y in cells(state['piece'],pos): board[y][x]=state['piece']
+    return dict(state=state,stage='final',candidate=dict(piece=state['piece'],path=path or [],pos=pos,board=board,auto={'mode':'attack'}))
 
 class ControllerTests(unittest.TestCase):
     def bot(self,rate=30,human=100):
@@ -107,9 +107,13 @@ class ControllerTests(unittest.TestCase):
             preferences.save(path,dict(key_rate=11,humanization=37,use_hold=False,swap_rotation=True))
             data=preferences.load(path);self.assertEqual(data['key_rate'],11);self.assertFalse(data['use_hold'])
             self.assertTrue(data['attack_priority'],'existing settings migrate to attack priority')
-            preferences.save(path,{**data,'attack_priority':False})
+            self.assertEqual(data['dynamic_tempo'],0,'old settings keep their original timing')
+            preferences.save(path,{**data,'attack_priority':False,'dynamic_tempo':63})
             self.assertFalse(preferences.load(path)['attack_priority'])
+            self.assertEqual(preferences.load(path)['dynamic_tempo'],63)
             path.write_text('{broken');self.assertEqual(preferences.load(path),preferences.DEFAULTS)
             self.assertEqual(preferences.sanitize({'key_rate':float('nan'),'humanization':float('inf')}),preferences.DEFAULTS)
+            for value,expected in ((-4,0),(105,100),(float('nan'),0),('bad',0)):
+                self.assertEqual(preferences.sanitize({'dynamic_tempo':value})['dynamic_tempo'],expected)
 
 if __name__=='__main__':unittest.main()

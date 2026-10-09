@@ -2,7 +2,7 @@
 import json
 import math
 
-DEFAULTS = {'key_rate': 30, 'humanization': 0, 'use_hold': True, 'swap_rotation': False, 'attack_priority': True}
+DEFAULTS = {'key_rate': 30, 'humanization': 0, 'dynamic_tempo': 0, 'use_hold': True, 'swap_rotation': False, 'attack_priority': True}
 
 def bounded(value, low, high, default):
     try:
@@ -16,6 +16,7 @@ def sanitize(data):
     return {
         'key_rate': bounded(data.get('key_rate'), 2, 30, 30),
         'humanization': bounded(data.get('humanization'), 0, 100, 0),
+        'dynamic_tempo': bounded(data.get('dynamic_tempo'), 0, 100, 0),
         'use_hold': data.get('use_hold') if isinstance(data.get('use_hold'), bool) else True,
         'swap_rotation': data.get('swap_rotation') if isinstance(data.get('swap_rotation'), bool) else False,
         'attack_priority': data.get('attack_priority') if isinstance(data.get('attack_priority'), bool) else True,

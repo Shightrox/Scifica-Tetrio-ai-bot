@@ -30,7 +30,7 @@ The browser sandbox above runs entirely locally. The screenshot uses a synthetic
 - **Adapt.** Prepare quads and short clear chains when there is space; downstack when height, holes or buried garbage become dangerous.
 - **Build pressure.** Attack priority favors estimated garbage output and attack per piece. A dedicated search proves perfect clears using up to six known pieces and HOLD, then keeps the verified continuation as NEXT advances.
 - **Verify each key.** Observe the result of movement, HOLD and hard drop before advancing. Recover and replan after missed input, changed stacks or search-worker failure.
-- **Set the tempo.** Speed adjusts key spacing; MAX adds no artificial wait. Humanization adds occasional verified lateral out-and-back moves in low-risk positions.
+- **Set the tempo.** Speed sets base key spacing. Dynamic tempo adds thought pauses and varied tap intervals, with less hesitation under pressure. Humanization separately adds occasional verified lateral out-and-back moves in low-risk positions.
 - **Stay in view.** Custom draggable title bar, minimize and close. The panel stays open when autopilot starts and stays put during background recalibration.
 
 No browser extension, game-process injection, remote inference or API key is required.
@@ -49,7 +49,7 @@ Edited illustration from a user screenshot: nickname changed to `scifica`; the c
 
 ### Windows executable
 
-Download **`Scifica-0.16.0-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
+Download **`Scifica-0.16.1-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
 
 Requires **64-bit Windows 10 2004+ or Windows 11**. The executable opens the desktop pilot; the optional browser sandbox remains available from source. Settings and logs live in `%LOCALAPPDATA%\Scifica`, outside the executable's temporary extraction directory. The first launch may take a few seconds to unpack.
 
@@ -85,8 +85,9 @@ Only the Windows overlay sends game input. The browser has its own sandbox and a
 | Control | Function |
 | --- | --- |
 | Speed: 2–29 keys/s | Nominal tap frequency; feedback can make it slower |
-| Speed: MAX | No extra pacing delay; fresh-frame verification still applies |
+| Speed: MAX | No fixed spacing; Dynamic tempo and fresh-frame verification still apply |
 | Humanization: 0–100% | Probability of one sidestep + return on an eligible piece; also up to ±12% timing variation below MAX |
+| Dynamic tempo: 0–100% | Strength of thought pauses, per-piece rhythm and varied tap spacing; 0 keeps previous timing |
 | HOLD | Allow the search to use Shift to exchange the piece |
 | Attack priority | Favor garbage, B2B and clear chains; enable dedicated PC search. On by default; survival still overrides aggression |
 | Swap Z / X | Reverse the configured rotation keys |
@@ -100,6 +101,8 @@ Only the Windows overlay sends game input. The browser has its own sandbox and a
 Expected game bindings: **Left / Right** move, **Z** counterclockwise, **X** clockwise, **Space** hard drop, **Shift** HOLD. Match them in TETR.IO.
 
 Humanization defaults to **0%**. Extra movement is skipped for high stacks, low clearance, inferred-only poses and recovery attempts. It never randomly drops, holds or rotates. A failed detour triggers replanning from the observed position. It is a movement-style option, not a guarantee of human-like play.
+
+**Dynamic tempo** also defaults to **0%** and works independently of movement humanization, including at Speed MAX. Try 30–40% for light variation. At 100%, safe positions get an 80–460 ms thought budget once per placement and roughly 18–220 ms extra spacing per tap, with a shared per-piece rhythm and occasional hesitations. Frame feedback can take longer. New frames and HOLD do not restart the thought pause. As landing clearance shrinks, waits shorten; high stacks, survival and recovery bypass the added delays. The configured base Speed is still respected. Timing changes apply live and never block capture, search, acknowledgement or the focus guard.
 
 With **Attack priority** enabled, the panel displays `PRESSURE` or a verified `PC / N pieces` plan. The `~attack` number estimates the known sequence before incoming-garbage cancellation and room modifiers. Changing the setting replans while preserving pending HOLD/DROP verification. Turning it off restores the balanced three-piece search. [Strategy details and measured comparison](docs/attack-priority.md).
 

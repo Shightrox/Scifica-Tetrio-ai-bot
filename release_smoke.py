@@ -57,10 +57,11 @@ def run(report_path):
         assert report['perfect_clear_pieces']==4
         report['tk']=app.root.tk.call('info','patchlevel')
         report['capture_exclusion']=True # Overlay construction fails if unsupported.
-        app.key_rate.set(17);app.humanization.set(23);app.attack_priority.set(False);app.save_preferences()
+        app.key_rate.set(17);app.humanization.set(23);app.dynamic_tempo.set(41);app.attack_priority.set(False);app.save_preferences()
         stored=preferences.load(app.data_dir/'settings.json')
         assert stored['key_rate']==17 and stored['humanization']==23,stored
         assert stored['attack_priority'] is False
+        assert stored['dynamic_tempo']==41
         assert not app.player.enabled
         report['persistent_data']=not app.data_dir.is_relative_to(RESOURCE_ROOT) if report['frozen'] else True
         assert report['persistent_data']

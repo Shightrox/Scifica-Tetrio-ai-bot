@@ -59,11 +59,15 @@ The controller pauses on a stale/ambiguous frame, focus loss, a blocking game me
 
 `preferences.py` validates finite values and writes settings atomically. The panel applies changes live. Autopilot arming and capture geometry are never restored from settings.
 
-Speed limits the interval between taps, after handling acknowledgement and recovery. It never sleeps the capture or search loop. The slider runs from 2 to 29 keys/s, with 30 representing **MAX**, which adds no wait. Humanization can vary the nominal interval by up to ±12%, so it is a target tempo rather than a strict rate limiter.
+Speed limits the interval between taps, after handling acknowledgement and recovery. It never sleeps the capture or search loop. The slider runs from 2 to 29 keys/s, with 30 representing **MAX**, which adds no fixed wait. Humanization can vary the nominal interval by up to ±12%, so it is a target tempo rather than a strict rate limiter.
 
 At an eligible piece's first plan, humanization is the probability of adding a pair such as `Left, Right`. Eligibility requires an observed pose near spawn, a low stack, enough landing clearance, and no recovery or survival pressure. Both taps use the ordinary acknowledgement path. The original route follows only after the return is verified. A board change or failed tap discards the detour and replans. Turning the slider to zero during a pair still allows its pending correction; it does not blindly assume the piece returned.
 
 No search quality is traded for humanization. These controls do not change AUTO's tactical priorities.
+
+Dynamic tempo is an independent 0–100% strength setting, disabled by default. A placement samples one 80–260 ms thought delay (25% chance of another 80–200 ms) and a 0.7–1.3 rhythm factor. Successful taps sample 25–100 ms times that factor, with an 18% chance of another 30–90 ms hesitation. The slider scales both types of delay. Thought and tap deadlines overlap; no `sleep` is introduced. Thought timing starts with the first usable candidate and does not reset when the pose, advice or HOLD changes. A verified lock resets the rhythm for the next placement. Recovery cancels thought timing and the extra tap delay.
+
+Each fresh observation scales the added waits: 35% with six-to-nine cells of landing clearance or a pose below the spawn area; zero at five or fewer cells, any occupied cell in the top eleven rows, survival, inferred-only poses or retries. Once the thought gate opens, it stays open for that placement. The base Speed interval remains independent. Pending acknowledgements, stale-frame and focus checks always run before pacing. Setting Dynamic tempo to zero releases an existing artificial wait on the next eligible update.
 
 ## UI and local data
 

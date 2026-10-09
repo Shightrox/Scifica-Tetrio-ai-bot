@@ -31,21 +31,59 @@ class AutoPlayer:
         self.early_spawn=None
         self.recovery=None;self.revision=0;self.failed_motion=None
         self.vk={'L':0x25,'R':0x27,'CW':0x58,'CCW':0x5a,'DROP':0x20,'HOLD':0x10}
-        self.rng=rng or random.Random();self.key_rate=30;self.humanization=0
+        self.rng=rng or random.Random();self.key_rate=30;self.humanization=0;self.dynamic_tempo=0
         self.last_tap_at=float('-inf');self.pace_factor=1;self.human_considered=False
+        self.reset_rhythm()
 
-    def configure(self,key_rate=30,humanization=0):
+    def configure(self,key_rate=30,humanization=0,dynamic_tempo=0):
         self.key_rate=bounded(key_rate,2,30,30)
         self.humanization=bounded(humanization,0,100,0)
+        self.dynamic_tempo=bounded(dynamic_tempo,0,100,0)
 
-    def pace_ready(self,now):
+    def reset_rhythm(self):
+        self.timing_started=None;self.thinking_done=False;self.think_delay=0
+        self.tap_delay=0;self.burst_scale=1
+
+    def tempo_safety(self,state,candidate,observed):
+        if not observed or self.retries or candidate.get('auto',{}).get('mode')=='survive':return 0
+        if any(any(row) for row in state['board'][:11]):return 0
+        end=landing(state['board'],state['piece'],state['start'])
+        clearance=end['y']-state['start']['y'] if end else 0
+        if clearance<=5:return 0
+        return .35 if clearance<=9 or state['start']['y']>3 else 1
+
+    def pace_ready(self,now,state,candidate,observed):
+        """Non-blocking deadlines, sampled once per placement/tap, never per frame.
+
+        HOLD shares the placement's rhythm. Fresh pixels can shorten a wait as
+        the piece falls or danger rises. Acknowledgements run before this gate.
+        """
+        strength=self.dynamic_tempo/100
+        safety=self.tempo_safety(state,candidate,observed) if strength else 0
+        if strength and self.timing_started is None:
+            self.timing_started=now
+            self.burst_scale=self.rng.uniform(.7,1.3)
+            self.think_delay=self.rng.uniform(.08,.26)
+            if self.rng.random()<.25:self.think_delay+=self.rng.uniform(.08,.20)
+        thinking=(strength and not self.thinking_done and
+                  now<self.timing_started+self.think_delay*strength*safety)
+        if not thinking and self.timing_started is not None:self.thinking_done=True
         interval=0 if self.key_rate>=30 else 1/self.key_rate
-        return now-self.last_tap_at>=interval*self.pace_factor
+        gap=interval*self.pace_factor+self.tap_delay*strength*safety
+        if thinking or now-self.last_tap_at<gap:
+            self.phase='pacing'
+            self.reason='Thinking' if thinking else ('Dynamic tempo' if strength and safety else 'Tempo')
+            return False
+        return True
 
     def send(self,action,now):
         if not self.tap(self.vk[action]):return False
         self.last_tap_at=now
         self.pace_factor=1+self.rng.uniform(-.12,.12)*self.humanization/100
+        if self.dynamic_tempo:
+            self.tap_delay=self.rng.uniform(.025,.10)*self.burst_scale
+            if self.rng.random()<.18:self.tap_delay+=self.rng.uniform(.03,.09)
+        else:self.tap_delay=0
         return True
 
     def human_prefix(self,state,candidate,observed):
@@ -76,6 +114,7 @@ class AutoPlayer:
         self.early_spawn=None
         self.recovery=None;self.revision+=1;self.failed_motion=None
         self.last_tap_at=float('-inf');self.pace_factor=1;self.human_considered=False
+        self.reset_rhythm()
 
     def stop(self,reason='Stopped'):
         self.enabled=False;self.phase='off';self.reason=reason;self.plan=None;self.waiting=None;self.early_spawn=None;self.recovery=None;self.release()
@@ -90,6 +129,7 @@ class AutoPlayer:
         if not self.enabled:return
         if self.recovery is not None and not reset:return
         self.release();self.plan=None;self.early_spawn=None;self.planning_key=None
+        self.thinking_done=True;self.tap_delay=0
         if reset:
             self.waiting=None;self.chain={'combo':0,'b2b':0}
             self.hold_blocked=True;self.held_piece=None
@@ -170,6 +210,7 @@ class AutoPlayer:
                         self.chain={k:q['chain'][k] for k in ('combo','b2b')};self.placed+=1
                         self.hold_blocked=False;self.held_piece=None;self.retries=0
                         self.human_considered=False
+                        self.reset_rhythm()
                         if not observed and spawn_age_ms is not None and spawn_age_ms<=180:
                             self.early_spawn={k:state[k] for k in ('board','piece','queue','generation')}
                         self.plan=None;self.waiting=None;self.phase='ready';self.reason='Lock + NEXT confirmed' if not observed else 'Lock confirmed'
@@ -186,6 +227,7 @@ class AutoPlayer:
                             self.chain={'combo':0,'b2b':0};self.plan=None;self.waiting=None;self.planning_key=None
                             self.hold_blocked=False;self.held_piece=None
                             self.human_considered=False
+                            self.reset_rhythm()
                             self.phase='ready';self.reason='New piece; synchronizing field';return
                         self.reason='Verifying changed field';return
                     self.resync_action('Stack changed; replanning',now,state);return
@@ -193,6 +235,7 @@ class AutoPlayer:
                 # A predicted spawn must never acknowledge our own key press.
                 if not observed:self.phase='verify';self.reason='Early move; verifying pose';return
                 if state['board']!=q['board'] or state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or state['queue']!=q['queue']:
+                    if state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or state['queue']!=q['queue']:self.reset_rhythm()
                     self.plan=None;self.waiting=None;self.phase='ready';self.reason='Field changed; replanning';return
                 actual=cells(state['piece'],state['start']);before=q['cells']
                 if actual!=before:
@@ -215,8 +258,6 @@ class AutoPlayer:
             self.phase='vision';self.reason=f"{state['piece']} from NEXT; waiting for pose";return
         if self.plan and (state['board']!=self.plan['board'] or state['piece']!=self.plan['piece']):
             self.plan=None;self.reason='Stack changed; replanning'
-        if not self.pace_ready(now):
-            self.phase='pacing';self.reason='Tempo';return
         if not self.plan:
             if state.get('controllerRevision',self.revision)!=self.revision:return
             if not advice or advice['state']!=state:return
@@ -235,6 +276,7 @@ class AutoPlayer:
                     first='HOLD' if alternative.get('useHold') else next((a for a in alternative['path'] if a!='D'),'DROP')
                     if first!=failed['action']:
                         c=alternative;break
+            if not self.pace_ready(now,state,c,observed):return
             path=list(c['path'])
             if c.get('useHold'):
                 if self.hold_blocked or not state.get('allowHold') or state.get('canHold') is False:return
@@ -254,6 +296,7 @@ class AutoPlayer:
                        'pcVerified':c.get('pcVerified',False),'pcPieces':c.get('pcPieces',0),'attackPlan':c.get('attackPlan',0),
                        'attackPriority':c.get('attackPriority',False)}
         p=self.plan;action=p['actions'][p['index']]
+        if not self.pace_ready(now,state,p,observed):return
         if p['index']<p.get('human_prefix',0):
             shifted=dict(state['start'],x=state['start']['x']+(-1 if action=='L' else 1))
             if not observed or not fits(state['board'],state['piece'],shifted):

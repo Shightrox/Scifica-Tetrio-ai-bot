@@ -29,5 +29,6 @@ with tempfile.TemporaryDirectory(prefix='Scifica isolated build ') as folder:
     assert prefs.exists(),'Settings did not survive process exit'
     assert json.loads(prefs.read_text(encoding='utf-8'))['humanization']==23
     assert json.loads(prefs.read_text(encoding='utf-8'))['attack_priority'] is False
+    assert json.loads(prefs.read_text(encoding='utf-8'))['dynamic_tempo']==41
     assert checks['perfect_clear_pieces']==4
     print('PASS isolated EXE: GUI, bundled search worker, vision, settings after exit; no game input')

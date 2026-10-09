@@ -71,6 +71,7 @@ def build(app, root_path):
     section('02 / INPUT')
     app.key_rate=tk.DoubleVar(value=saved['key_rate'])
     app.humanization=tk.DoubleVar(value=saved['humanization'])
+    app.dynamic_tempo=tk.DoubleVar(value=saved['dynamic_tempo'])
     app.use_hold=tk.BooleanVar(value=saved['use_hold'])
     app.swap_rotation=tk.BooleanVar(value=saved['swap_rotation'])
     app.attack_priority=tk.BooleanVar(value=saved['attack_priority'])
@@ -80,25 +81,27 @@ def build(app, root_path):
         try: preferences.save(root_path/'settings.json',values())
         except OSError: app.status.set('Settings could not be saved.')
     def values():
-        return dict(key_rate=app.key_rate.get(),humanization=app.humanization.get(),
+        return dict(key_rate=app.key_rate.get(),humanization=app.humanization.get(),dynamic_tempo=app.dynamic_tempo.get(),
                     use_hold=app.use_hold.get(),swap_rotation=app.swap_rotation.get(),attack_priority=app.attack_priority.get())
     def changed(*args):
-        app.player.configure(app.key_rate.get(),app.humanization.get())
+        app.player.configure(app.key_rate.get(),app.humanization.get(),app.dynamic_tempo.get())
         app.player.vk.update(CW=0x5a if app.swap_rotation.get() else 0x58,CCW=0x58 if app.swap_rotation.get() else 0x5a)
         app.speed_label.set('MAX' if app.key_rate.get()>=30 else f'{app.key_rate.get():.0f} keys/s')
         app.human_label.set(f'{app.humanization.get():.0f}%')
+        app.tempo_label.set(f'{app.dynamic_tempo.get():.0f}%')
         if app._save_job:root.after_cancel(app._save_job)
         app._save_job=root.after(300,save_settings)
     app.save_preferences=save_settings
-    app.speed_label=tk.StringVar();app.human_label=tk.StringVar()
+    app.speed_label=tk.StringVar();app.human_label=tk.StringVar();app.tempo_label=tk.StringVar()
     def slider(title, variable, label, minimum, maximum, help_text):
         row=tk.Frame(body,bg=BG);row.pack(fill='x',pady=(2,0))
         tk.Label(row,text=title,font=(FONT,11,'bold'),fg=FG,bg=BG).pack(side='left')
         tk.Label(row,textvariable=label,font=(FONT,11,'bold'),fg=ACCENT,bg=BG).pack(side='right')
         PixelSlider(body,variable,minimum,maximum,changed).pack(fill='x',pady=(3,0))
-        tk.Label(body,text=help_text,font=(FONT,8),fg=MUTED,bg=BG).pack(anchor='w',pady=(0,10))
-    slider('Speed',app.key_rate,app.speed_label,2,30,'Key tempo. MAX follows frame feedback.')
-    slider('Humanization',app.humanization,app.human_label,0,100,'Occasional sidestep + return. Low-risk positions only.')
+        tk.Label(body,text=help_text,font=(FONT,9),fg=MUTED,bg=BG).pack(anchor='w',pady=(0,10))
+    slider('Speed',app.key_rate,app.speed_label,2,30,'Base key tempo. MAX removes fixed spacing.')
+    slider('Humanization',app.humanization,app.human_label,0,100,'Occasional sidestep + return. Safe positions only.')
+    slider('Dynamic tempo',app.dynamic_tempo,app.tempo_label,0,100,'Think pauses + varied taps. Faster under pressure.')
     toggles=tk.Frame(body,bg=BG);toggles.pack(fill='x')
     for text,var in [('HOLD / Shift',app.use_hold),('Swap Z / X',app.swap_rotation)]:
         tk.Checkbutton(toggles,text=text,variable=var,command=changed,bg=BG,fg=FG,selectcolor=PANEL,
@@ -126,5 +129,5 @@ def build(app, root_path):
         tk.Label(telemetry,textvariable=var,fg=color,bg=PANEL,font=(FONT,9),anchor='w',justify='left',
                  wraplength=408,height=height).pack(fill='x',padx=10,pady=(4,0))
     tk.Label(body,text='Ctrl+Alt  F7 pilot  F8 field  F9 pause  F10 panel\nEsc stop   /   Z CCW   X CW   Space drop',
-             fg=MUTED,bg=BG,font=(FONT,8),justify='left',anchor='w').pack(fill='x',pady=(12,0))
+             fg=MUTED,bg=BG,font=(FONT,9),justify='left',anchor='w').pack(fill='x',pady=(12,0))
     changed()
