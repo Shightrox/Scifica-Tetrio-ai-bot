@@ -1,4 +1,4 @@
-"""Closed-loop controller. Pure logic with an injected, guarded key-tap sink."""
+"""Closed-loop controller. Pure logic with injected, guarded input sinks."""
 from overlay_vision import SHAPES
 import random
 from preferences import bounded
@@ -35,8 +35,9 @@ def garbage_shift(expected,actual):
     return 0
 
 class AutoPlayer:
-    def __init__(self,tap,release=lambda:None,rng=None):
+    def __init__(self,tap,release=lambda:None,rng=None,soft_drop=None):
         self.tap=tap;self.release=release;self.enabled=False;self.phase='off';self.reason='Autopilot disarmed'
+        self.soft_drop=soft_drop
         self.plan=None;self.waiting=None;self.started=0;self.last_seen=0;self.chain={'combo':0,'b2b':0};self.placed=0
         self.planning_key=None;self.planning_at=0
         self.paused_at=None;self.retries=0
@@ -67,7 +68,7 @@ class AutoPlayer:
         if clearance<=5:return 0
         return .35 if clearance<=9 or state['start']['y']>3 else 1
 
-    def pace_ready(self,now,state,candidate,observed):
+    def pace_ready(self,now,state,candidate,observed,finish=False):
         """Non-blocking deadlines, sampled once per placement/tap, never per frame.
 
         HOLD shares the placement's rhythm. Fresh pixels can shorten a wait as
@@ -86,14 +87,14 @@ class AutoPlayer:
         if not thinking and self.timing_started is not None:self.thinking_done=True
         interval=0 if self.key_rate>=30 else 1/self.key_rate
         gap=interval*self.pace_factor+self.tap_delay*strength*safety
-        if thinking or now-self.last_tap_at<gap:
+        if thinking or (not finish and now-self.last_tap_at<gap):
             self.phase='pacing'
             self.reason='Thinking' if thinking else ('Dynamic tempo' if strength and safety else 'Tempo')
             return False
         return True
 
     def send(self,action,now):
-        if not self.tap(self.vk[action]):return False
+        if not (self.soft_drop() if action=='SD' and self.soft_drop else self.tap(self.vk[action])):return False
         self.last_tap_at=now
         self.pace_factor=1+self.rng.uniform(-.12,.12)*self.humanization/100
         if self.dynamic_tempo:
@@ -226,6 +227,7 @@ class AutoPlayer:
             self.recover('Focus restored; verifying field',now)
         observed=source in ('pixels','partial','fragments')
         if not state or ambiguous or source not in ('pixels','partial','fragments','next') or now-frame_at>.12:
+            if self.waiting and self.waiting['action']=='SD':self.release()
             if self.recovery:self.recovery.update(stamp=None,count=0,frame=None)
             if now-self.last_seen>.65:
                 self.phase='vision';self.reason='Pose unavailable; check field'
@@ -291,8 +293,11 @@ class AutoPlayer:
                     self.resync_action('Stack changed; replanning',now,state);return
             else:
                 # A predicted spawn must never acknowledge our own key press.
-                if not observed:self.phase='verify';self.reason='Early move; verifying pose';return
+                if not observed:
+                    if q['action']=='SD':self.release()
+                    self.phase='verify';self.reason='Early move; verifying pose';return
                 if state['board']!=q['board'] or state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or state['queue']!=q['queue']:
+                    self.release()
                     if state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or state['queue']!=q['queue']:self.reset_rhythm()
                     self.plan=None;self.waiting=None;self.phase='ready';self.reason='Field changed; replanning';return
                 actual=cells(state['piece'],state['start']);before=q['cells']
@@ -306,10 +311,23 @@ class AutoPlayer:
                 if q['action']=='SD':
                     target=q['target']
                     if actual==target:
+                        self.release()
                         self.plan['index']+=1;self.waiting=None;self.retries=0;self.phase='moving';return
                     same_column=min(x for x,y in actual)==min(x for x,y in before) and self.shape(actual)==self.shape(before)
-                    if not same_column or min(y for x,y in actual)>min(y for x,y in target):
+                    landed=landing(state['board'],state['piece'],state['start'])
+                    if not same_column or min(y for x,y in actual)<min(y for x,y in before) or not landed or cells(state['piece'],landed)!=target:
                         self.resync_action('Descent changed; replanning',now,state);return
+                    if self.soft_drop:
+                        # Renew only on a distinct, valid frame. The input sink
+                        # releases Down independently if capture/controller stalls.
+                        if min(y for x,y in actual)>min(y for x,y in before):
+                            q['cells']=actual;q['progress_at']=now
+                        if now-q.get('progress_at',q['at'])>.45:
+                            self.resync_action('SD unconfirmed; replanning',now,state);return
+                        if frame_at>q.get('sd_frame',q['at']):
+                            if not self.soft_drop():self.recover('Descent input failed; replanning',now);return
+                            q['sd_frame']=frame_at
+                        self.phase='verify';self.reason='Descending to surface';return
                     if min(y for x,y in actual)>min(y for x,y in before):
                         self.waiting=None;self.phase='moving';self.reason='Descending to surface';return
                 if actual!=before:
@@ -332,7 +350,7 @@ class AutoPlayer:
             self.phase='vision';self.reason=f"{state['piece']} from NEXT; waiting for pose";return
         if self.plan and (state['board']!=self.plan['board'] or state['piece']!=self.plan['piece']):
             self.plan=None;self.reason='Stack changed; replanning'
-        if (self.plan and not self.plan.get('inTuck') and not self.deep_replanned and observed and state['start']['y']<=3
+        if (self.plan and self.plan['index']<len(self.plan['actions'])-1 and not self.plan.get('inTuck') and not self.deep_replanned and observed and state['start']['y']<=3
                 and advice and advice['state']==state and advice['stage']=='final'
                 and advice['candidate'].get('lookahead',1)>self.plan.get('lookahead',1)):
             self.plan=None;self.deep_replanned=True;self.reason='Deeper attack route ready'
@@ -383,7 +401,9 @@ class AutoPlayer:
         p=self.plan;action=p['actions'][p['index']]
         expected_pose=None
         if action=='SD':p['inTuck']=True
-        if not self.pace_ready(now,state,p,observed):return
+        # Keep the initial thought pause, but no extra key-spacing pause after
+        # the last verified move. A ready placement should lock immediately.
+        if not self.pace_ready(now,state,p,observed,finish=action=='DROP'):return
         if action in ('CW','CCW','180') and len(p['route'])>p['index'] and p['route'][p['index']]:
             previous=p['route'][p['index']-1] if p['index'] else None
             before=previous['pos'] if previous else p['origin']

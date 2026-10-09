@@ -40,10 +40,10 @@ Attack priority adds weight to estimated garbage and attack per searched piece w
 
 ## Closed-loop input
 
-`game_input.py` sends short scan-code taps only when the selected TETR.IO window is foreground and no conflicting modifier is held. It schedules key release and tracks only keys it owns. The controller is injected with a tap sink, allowing tests to exercise faults without sending real input.
+`game_input.py` sends short scan-code taps and renewable Down holds only when the selected TETR.IO window is foreground and no conflicting modifier is held. It schedules key release and tracks only keys it owns. The controller is injected with tap, release and soft-drop sinks, allowing tests to exercise faults without sending real input.
 
 ```text
- disarmed --start--> ready --> send one tap --> verify new frame
+ disarmed --start--> ready --> send action --> verify new frame
                        ^                            |
                        |       confirmed            |
                        +----------------------------+
@@ -55,7 +55,9 @@ Attack priority adds weight to estimated garbage and attack per searched piece w
 
 Movement acknowledgements require actual observed cells, not a NEXT-derived guess. Native rotation checkpoints verify the target cells with unobstructed gravity allowance; ordinary falling cannot acknowledge a symmetric half turn. The pilot preserves confirmed I/S/Z orientation across the reader's visually identical 0/2 or 1/3 representations. Unknown orientation restricts current-piece rotation until spawn or another observation resolves it. HOLD waits for the expected replacement. Its confirmed outgoing piece is retained through grey/occluded HOLD frames and cleared on capture reset. Empty-slot detection samples the dark interior, excluding the white heading and border. DROP verifies the current landing matches the target, then waits for a new piece plus the resulting field; it does not immediately repeat a drop. Recovery requires three distinct fresh observed frames before proceeding. Repeatedly ineffective moves can select another candidate whose first action differs. Worker crashes restart with backoff while preserving armed state.
 
-Soft drop sends short Down taps. Each observed downward movement is checked, and further taps continue only toward the planned supported pose. A changed surface, failed descent or missed rotation discards the route; it never skips straight to the final drop. Once descent begins, the remaining tuck actions bypass base pacing and cosmetic timing because they must fit inside the game's lock delay. Focus, pose and acknowledgement guards remain active. Movement flourishes are excluded from spin/tuck plans.
+Soft drop holds Down until the planned supported pose is observed, then releases it before any following rotation or slide. Only distinct, fresh, verified frames with the same board, piece, generation and reachable surface renew the 120 ms input lease. An independent watchdog checks every 8 ms and releases on expiry, focus/target changes or conflicting modifiers, including when the controller stops ticking. Missing, stale, ambiguous or inferred-only poses release immediately in the controller. Actual downward progress resets a 450 ms stall timeout, allowing a slow but progressing descent to finish. A changed surface, failed descent or missed rotation discards the route; it never skips straight to the final drop. Once descent begins, the remaining tuck actions bypass base pacing and cosmetic timing because they must fit inside the game's lock delay. Movement flourishes are excluded from spin/tuck plans.
+
+Breadth-first route expansion tries turns before horizontal moves, preferring an early rotation among equally short legal paths. Rotations requiring floor/roof kicks still occur after the necessary descent. Terminal descent steps are removed from execution: a plain placement locks with Space directly from the air. Once its last motion is verified, the final drop bypasses the extra key-spacing delay and a late deeper result cannot redirect the completed route. Exact landing, fresh pixels and focus are still required. Initial planning/thought pacing is unchanged, including a new placement that needs no motion.
 
 The controller pauses on a stale/ambiguous frame, focus loss, a blocking game message, panel overlap or a held modifier. A temporary pause is different from explicit Stop. No screenshot alone can prove the position of a fully hidden piece.
 
@@ -63,7 +65,7 @@ The controller pauses on a stale/ambiguous frame, focus loss, a blocking game me
 
 `preferences.py` validates finite values and writes settings atomically. The panel applies changes live. Autopilot arming and capture geometry are never restored from settings.
 
-Speed limits the interval between taps, after handling acknowledgement and recovery. It never sleeps the capture or search loop. The slider runs from 2 to 29 keys/s, with 30 representing **MAX**, which adds no fixed wait. Humanization can vary the nominal interval by up to ±12%, so it is a target tempo rather than a strict rate limiter.
+Speed limits the interval between ordinary movement taps, after handling acknowledgement and recovery. A final aligned hard drop and active tuck execution bypass this interval. It never sleeps the capture or search loop. The slider runs from 2 to 29 keys/s, with 30 representing **MAX**, which adds no fixed wait. Humanization can vary the nominal interval by up to ±12%, so it is a target tempo rather than a strict rate limiter.
 
 At an eligible piece's first plan, humanization is the probability of adding a pair such as `Left, Right`. Eligibility requires an observed pose near spawn, a low stack, enough landing clearance, and no recovery or survival pressure. Both taps use the ordinary acknowledgement path. The original route follows only after the return is verified. A board change or failed tap discards the detour and replans. Turning the slider to zero during a pair still allows its pending correction; it does not blindly assume the piece returned.
 

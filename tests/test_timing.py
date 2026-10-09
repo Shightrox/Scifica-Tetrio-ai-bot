@@ -28,7 +28,7 @@ class TimingTests(unittest.TestCase):
         bot, keys = self.bot()
         state = scene()
         for now in (.4, .861):
-            bot.update(now, state, advice(state, ['L'], -1), now, True)
+            bot.update(now, state, advice(state, ['L','L'], -2), now, True)
         moved = {**state, 'start': dict(state['start'], x=2)}
         bot.update(.885, moved, None, .885, True)
         self.assertIsNone(bot.waiting)
@@ -37,7 +37,31 @@ class TimingTests(unittest.TestCase):
         self.assertEqual(keys, [0x25])
         bot.configure(30, 0, 0)
         bot.update(.91, moved, None, .91, True)
-        self.assertEqual(keys, [0x25, 0x20])
+        self.assertEqual(keys, [0x25, 0x25])
+
+    def test_verified_alignment_drops_without_an_extra_tempo_gap(self):
+        for rate in (2, 30):
+            bot, keys = self.bot(rate=rate);state = scene()
+            for now in (.4, .861):
+                bot.update(now, state, advice(state, ['L'], -1), now, True)
+            moved = {**state, 'start': dict(state['start'], x=2)}
+            bot.update(.885, moved, None, .885, True)
+            # A late deeper candidate must not redirect an already aligned piece.
+            deeper = advice(moved, ['R'], 1);deeper['candidate']['lookahead'] = 6
+            bot.update(.893, moved, deeper, .893, True)
+            self.assertEqual(keys, [0x25, 0x20])
+            self.assertFalse(bot.deep_replanned)
+
+    def test_drop_still_requires_fresh_aligned_pixels_and_focus(self):
+        for fault in ('next', 'stale', 'unfocused', 'shifted'):
+            bot, keys = self.bot(strength=0);state = scene()
+            bot.update(.4, state, advice(state, ['L'], -1), .4, True)
+            moved = {**state, 'start': dict(state['start'], x=2)}
+            bot.update(.425, moved, None, .425, True)
+            if fault=='shifted':moved={**moved,'start':dict(moved['start'],x=1)}
+            bot.update(.55, moved, None, .4 if fault=='stale' else .55,
+                       fault!='unfocused', source='next' if fault=='next' else 'pixels')
+            self.assertEqual(keys,[0x25],fault)
 
     def test_danger_and_recovery_cancel_thinking_without_removing_base_tempo(self):
         for danger in ('height', 'clearance', 'survive', 'retry'):

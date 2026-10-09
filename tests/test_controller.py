@@ -41,7 +41,7 @@ class ControllerTests(unittest.TestCase):
         b.update(.9,returned,None,.9,True);self.assertEqual(keys,[0x25,0x27,0x20])
         b.update(1.,returned,None,1.,True);self.assertEqual(keys,[0x25,0x27,0x20])
     def test_tempo_does_not_delay_ack_or_focus_guard(self):
-        b,keys=self.bot(2,0);s=scene();a=advice(s,['L'],dx=-1)
+        b,keys=self.bot(2,0);s=scene();a=advice(s,['L','L'],dx=-2)
         b.update(.4,s,a,.4,True)
         moved={**s,'start':dict(s['start'],x=2)}
         b.update(.44,moved,None,.44,True);self.assertIsNone(b.waiting)
@@ -50,11 +50,11 @@ class ControllerTests(unittest.TestCase):
         b.configure(30,0);b.update(.6,moved,None,.6,False)
         self.assertEqual(b.phase,'paused');self.assertEqual(keys,[0x25])
     def test_slower_rate_caps_taps_and_max_applies_live(self):
-        b,keys=self.bot(2,0);s=scene();b.update(.4,s,advice(s,['L'],dx=-1),.4,True)
+        b,keys=self.bot(2,0);s=scene();b.update(.4,s,advice(s,['L','L'],dx=-2),.4,True)
         moved={**s,'start':dict(s['start'],x=2)}
         b.update(.44,moved,None,.44,True)
         b.update(.89,moved,None,.89,True);self.assertEqual(len(keys),1)
-        b.configure(30,0);b.update(.90,moved,None,.90,True);self.assertEqual(keys,[0x25,0x20])
+        b.configure(30,0);b.update(.90,moved,None,.90,True);self.assertEqual(keys,[0x25,0x25])
     def test_ignored_movement_recovers_without_blind_return(self):
         for ignore_return in (False,True):
             b,keys=self.bot();s=scene();b.update(.4,s,advice(s),.4,True)
@@ -117,7 +117,7 @@ class ControllerTests(unittest.TestCase):
                 self.assertEqual(preferences.sanitize({'dynamic_tempo':value})['dynamic_tempo'],expected)
 
     def test_one_deep_route_upgrade_uses_the_current_verified_pose(self):
-        bot,keys=self.bot(human=0);state=scene();first=advice(state,['L'],-1)
+        bot,keys=self.bot(human=0);state=scene();first=advice(state,['L','L'],-2)
         first['candidate']['lookahead']=1
         bot.update(.4,state,first,.4,True)
         moved={**state,'start':dict(state['start'],x=2)}

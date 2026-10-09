@@ -50,7 +50,7 @@ Edited illustration from a user screenshot: nickname changed to `scifica`; the c
 
 ### Windows executable
 
-Download **`Scifica-0.18.0-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
+Download **`Scifica-0.18.1-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
 
 Requires **64-bit Windows 10 2004+ or Windows 11**. The executable opens the desktop pilot; the optional browser sandbox remains available from source. Settings and logs live in `%LOCALAPPDATA%\Scifica`, outside the executable's temporary extraction directory. The first launch may take a few seconds to unpack.
 
@@ -102,9 +102,11 @@ Only the Windows overlay sends game input. The browser has its own sandbox and a
 
 Expected game bindings: **Left / Right** move, **Z** counterclockwise, **X** clockwise, **A** 180° (configurable), **Down** soft drop, **Space** hard drop, **Shift** HOLD. Match them in TETR.IO and use its **SRS+** kick table. Once a tuck descent begins, the remaining inputs use feedback speed, bypassing cosmetic pauses and base spacing to reduce lock-delay risk.
 
+Among equally short routes, the pilot prefers turning near spawn before moving sideways. Ordinary placements use **Space** from the air as soon as the last move is verified and the landing matches; there is no extra tempo pause before that drop. Tucks hold **Down** until the planned surface is observed, then release it before the next turn. A separate watchdog releases Down if fresh feedback stops or game focus changes. The initial Dynamic tempo thought pause and normal movement spacing remain configurable.
+
 Humanization defaults to **0%**. Extra movement is skipped for high stacks, low clearance, inferred-only poses and recovery attempts. It never randomly drops, holds or rotates. A failed detour triggers replanning from the observed position. It is a movement-style option, not a guarantee of human-like play.
 
-**Dynamic tempo** also defaults to **0%** and works independently of movement humanization, including at Speed MAX. Try 30–40% for light variation. At 100%, safe positions get an 80–460 ms thought budget once per placement and roughly 18–220 ms extra spacing per tap, with a shared per-piece rhythm and occasional hesitations. Frame feedback can take longer. New frames and HOLD do not restart the thought pause. As landing clearance shrinks, waits shorten; high stacks, survival and recovery bypass the added delays. The configured base Speed is still respected. Timing changes apply live and never block capture, search, acknowledgement or the focus guard.
+**Dynamic tempo** also defaults to **0%** and works independently of movement humanization, including at Speed MAX. Try 30–40% for light variation. At 100%, safe positions get an 80–460 ms thought budget once per placement and roughly 18–220 ms extra spacing per tap, with a shared per-piece rhythm and occasional hesitations. Frame feedback can take longer. New frames and HOLD do not restart the thought pause. As landing clearance shrinks, waits shorten; high stacks, survival and recovery bypass the added delays. The configured base Speed applies to ordinary movement; active tucks and an aligned final drop bypass it. Timing changes apply live and never block capture, search, acknowledgement or the focus guard.
 
 With **Attack priority** enabled, the panel displays `PRESSURE` or a verified `PC / N pieces` plan. The `~attack` number estimates the known sequence before incoming-garbage cancellation and room modifiers. Changing the setting replans while preserving pending HOLD/DROP verification. Turning it off restores the balanced three-piece search. [Strategy details and measured comparison](docs/attack-priority.md).
 

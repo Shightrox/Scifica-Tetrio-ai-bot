@@ -1,6 +1,14 @@
 const assert=require('node:assert/strict'),E=require('../engine.js');
 const rules={rotationSystem:'srs+',allow180:true};
 const key=(t,p)=>E.SHAPES[t][p.r].map(([x,y])=>[x+p.x,y+p.y].join(',')).sort().join(';');
+// Rotation happens above the grid when it can commute with the lateral moves.
+// It must not add a surface wait to an ordinary straight-drop placement.
+for(const t of ['T','J','L','I']){
+ const board=E.empty(),start=E.entry(t,true);
+ const c=E.placements(board,t,start,true,false,true,rules).find(c=>c.pos.x===0&&c.pos.r===(t==='I'?3:1)&&!c.spin);
+ assert(c);assert.deepEqual(c.path,[t==='I'?'CCW':'CW','L','L','L','SD']);
+ assert.equal(c.route[0].pos.y,-2);assert(!c.requiresSoftDrop);
+}
 for(const sample of require('./rotation-cases.json')){
  const board=E.empty();sample.rows.forEach((r,i)=>board[20-sample.rows.length+i]=[...r].map(v=>v==='X'?'G':null));
  const start=E.entry(sample.piece,true),target=key(sample.piece,sample.target);

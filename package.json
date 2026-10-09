@@ -1,6 +1,6 @@
 {
   "name": "scifica-tetrio-ai-bot",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "private": true,
   "description": "Local visual TETR.IO coach, search inspector and verified Windows autopilot",
   "license": "MIT",

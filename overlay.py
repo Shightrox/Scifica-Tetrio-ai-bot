@@ -73,7 +73,7 @@ class Overlay:
         self.latencies=[];self.capture_ms=0;self.vision_ms=0;self.advice=None;self.last_draw=None;self.last_window_check=0
         self.preview=[];self.vision_source='pixels';self.detected_hold=None;self.hold_known=False;self.spawn_age_ms=None
         self.game_input=GameInput(lambda:self.target)
-        self.player=AutoPlayer(self.game_input.tap,self.game_input.release)
+        self.player=AutoPlayer(self.game_input.tap,self.game_input.release,soft_drop=self.game_input.hold_down)
         self.live_state=None;self.last_image_at=0;self.ambiguity=0;self.garbage_seen=0
         self.selector=None;self.reader_epoch=0;self.control_visible=True;self.hotkeys=[];self.key_events=queue.Queue()
         node=node_executable()

@@ -158,7 +158,9 @@
     }
     return [...landed.values()].sort((a,b)=>b.score-a.score||a.path.length-b.path.length);
   }
-  function actions(start,rules,descent){return ['L','R',...(!start.uncertain?['CW','CCW',...(rules.allow180?['180']:[])]:[]),...(descent?[descent]:[])];}
+  // Prefer early turns among equally short routes. Surface kicks still occur
+  // after SD when the search proves that the roof/floor is needed for entry.
+  function actions(start,rules,descent){return [...(!start.uncertain?['CW','CCW',...(rules.allow180?['180']:[])]:[]),'L','R',...(descent?[descent]:[])];}
   function unobservableHalf(t,before,after){
     if(!['I','S','Z'].includes(t))return false;
     const points=p=>SHAPES[t][p.r].map(([x,y])=>[x+p.x,y+p.y]);

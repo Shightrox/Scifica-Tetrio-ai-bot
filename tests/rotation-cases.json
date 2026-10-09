@@ -4,7 +4,7 @@
     "piece":"J",
     "rows":[".......X.X","..........","XXXXXXX..."],
     "target":{"x":7,"y":18,"r":0},
-    "path":["R","R","CW","SD","CW","R","180"]
+    "path":["CW","R","R","SD","CW","R","180"]
   },
   {
     "name":"SRS+ I tuck single through a narrow entrance",
