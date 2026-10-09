@@ -237,9 +237,10 @@ class Reader:
         self.pending_age=0
         self.inferred_frames=0
         self.hold=None;self.hold_known=False;self.hold_sample=None;self.hold_count=0
-        self.unstable_board=None;self.unstable_count=0
+        self.unstable_board=None;self.unstable_count=0;self.unstable_queue=[];self.unstable_advanced=False
         self.inferred_at=None;self.partial_pose=None;self.partial_count=0
         self.colour_templates={}
+        self.round_id=0;self.blocked_at=None
 
     def legal_lock(self, observed):
         """Verify a lock/line clear against the last known settled stack.
@@ -264,6 +265,10 @@ class Reader:
             kept=b[~np.all(b>0,axis=1)]
             cleared=np.vstack([np.zeros((20-len(kept),10),np.uint8),kept])
             if np.array_equal(cleared,observed):return True
+            for n in range(1,13):
+                bottom=observed[-n:]
+                if not np.all(((bottom==8).sum(1)>=8)&((bottom>0).sum(1)<10)):break
+                if np.array_equal(cleared[n:],observed[:-n]):return True
         return False
 
     def read(self, rgb, board_width, board_height, top=0, left=0, action=None):
@@ -287,6 +292,7 @@ class Reader:
         rgb=rgb[:,left:]
         h,w=rgb.shape[:2]
         blocked=game_overlay(rgb,board_width,board_height,top)
+        if blocked:self.blocked_at=time.perf_counter()
         size=(board_width,board_height,w,h,top)
         if size!=self.size:
             self.size=size
@@ -465,16 +471,28 @@ class Reader:
                 board=self.locked.copy()
             if self.locked is not None and not np.array_equal(self.locked,board) and not self.legal_lock(board):
                 if self.unstable_board is not None and np.array_equal(self.unstable_board,board):self.unstable_count+=1
-                else:self.unstable_board=board.copy();self.unstable_count=1
-                if self.unstable_count<3:
+                else:self.unstable_board=board.copy();self.unstable_count=1;self.unstable_queue=old_queue;self.unstable_advanced=advanced
+                # Repeated occlusion is not evidence of a legal board change.
+                # A fresh round needs an empty stack, a spawn, a new preview,
+                # and an independently empty HOLD or preceding game screen.
+                overlap=min(len(queue),len(self.unstable_queue))
+                fresh_round=(self.unstable_count>=8 and not board.any() and active['start']['y']<=0
+                             and len(queue)>=3 and overlap>=2 and queue[:overlap]!=self.unstable_queue[:overlap]
+                             and not advanced and not self.unstable_advanced
+                             and (self.hold_known and self.hold is None or self.blocked_at is not None and time.perf_counter()-self.blocked_at<3))
+                if fresh_round:
+                    self.round_id+=1;self.generation+=1;event='round-reset'
+                    self.last_active=None;self.blocked_at=None;self.unstable_count=0;self.unstable_board=None
+                else:
                     active=None;active_points=[];ambiguous=max(1,ambiguous);event='unstable'
+                    board=self.locked.copy()
             else:self.unstable_count=0;self.unstable_board=None
         if active:
             if source=='pixels' and active_points and not any(y>=0 and masked[y,x] for x,y in active_points):
                 colours=np.array([samples[y+4,x] for x,y in active_points]).reshape(-1,3)
                 chosen=colours[classes(colours)==TYPES.index(active['piece'])]
                 if len(chosen)>=20:self.colour_templates[active['piece']]=np.median(chosen,axis=0)
-            if advanced or self.locked is not None and not np.array_equal(self.locked,board):
+            if event!='round-reset' and (advanced or self.locked is not None and not np.array_equal(self.locked,board)):
                 self.generation+=1;event='lock' if advanced else 'new-piece'
             self.locked=board.copy()
             self.last_active=active
@@ -487,6 +505,7 @@ class Reader:
         return {'board':[[TYPES[int(v)] or None for v in row] for row in board],
                 'active':active,'queue':queue,'ambiguous':ambiguous,'event':event,
                 'source':source,'generation':self.generation,'garbage_rise':garbage_rise,
+                'roundId':self.round_id,
                 'hold':self.hold,'holdKnown':self.hold_known,
                 'spawnAgeMs':(time.perf_counter()-self.inferred_at)*1000 if source=='next' and self.inferred_at is not None else None,
                 'blocked':blocked,'noticeCells':int(masked.sum())}

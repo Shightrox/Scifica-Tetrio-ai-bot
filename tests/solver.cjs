@@ -48,7 +48,7 @@ async function response(id,stage){const until=performance.now()+4000;while(perfo
  s={...initial,board,piece:'T',start:E.entry('T',true),hold:null,allowHold:false,tucks:true,rotationSystem:'srs+',allow180:true,queue:['I','S','O','J']};
  send(130,s);r=await response(130,'final');assert.equal(r.result.candidates[0].spin,'full');
  send(131,{...s,start:{x:3,y:3,r:1},queue:[...s.queue,'Z']});r=await response(131,'final');
- assert(r.cache,'a newly revealed tail can reuse verified known-prefix analysis');
+ assert(replies.some(a=>a.id===131&&a.cache),'a newly revealed tail immediately reuses verified known-prefix analysis');
  let native=r.result.candidates[0],pos={x:3,y:3,r:1};assert.equal(native.spin,'full');
  for(const [i,a] of native.path.entries()){pos=E.move(board,native.piece,pos,a,'srs+');assert.deepEqual(pos,native.route[i].pos);}
  assert(native.requiresSoftDrop);assert.deepEqual(pos,native.pos);

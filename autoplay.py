@@ -34,6 +34,22 @@ def garbage_shift(expected,actual):
         if expected[n:]==actual[:-n]:return n
     return 0
 
+def queue_compatible(a,b):
+    """A revealed/masked tail is not a new falling piece."""
+    return a[:min(len(a),len(b))]==b[:min(len(a),len(b))]
+
+def queue_advanced(a,b,piece):
+    n=min(3,len(a)-1,len(b))
+    return n>=1 and piece==a[0] and b[:n]==a[1:n+1] and not queue_compatible(a,b)
+
+def locked_board(board,piece,pos):
+    end=landing(board,piece,pos)
+    if not end or any(y<0 for x,y in cells(piece,end)):return None
+    result=[row[:] for row in board]
+    for x,y in cells(piece,end):result[y][x]=piece
+    kept=[row for row in result if not all(row)]
+    return [[None]*10 for _ in range(20-len(kept))]+kept,20-len(kept),end
+
 class AutoPlayer:
     def __init__(self,tap,release=lambda:None,rng=None,soft_drop=None):
         self.tap=tap;self.release=release;self.enabled=False;self.phase='off';self.reason='Autopilot disarmed'
@@ -44,6 +60,7 @@ class AutoPlayer:
         self.hold_blocked=False;self.held_piece=None;self.verified_hold=None;self.hold_verified=False
         self.early_spawn=None
         self.pose=None
+        self.last_state=None
         self.recovery=None;self.revision=0;self.failed_motion=None
         self.vk={'L':0x25,'R':0x27,'CW':0x58,'CCW':0x5a,'180':0x41,'SD':0x28,'DROP':0x20,'HOLD':0x10}
         self.rng=rng or random.Random();self.key_rate=30;self.humanization=0;self.dynamic_tempo=0
@@ -124,6 +141,7 @@ class AutoPlayer:
 
     def start(self,now):
         self.pose=None
+        self.last_state=None
         self.enabled=True;self.phase='ready';self.reason='Waiting for piece';self.plan=None;self.waiting=None
         self.started=now+.35;self.last_seen=now;self.chain={'combo':0,'b2b':0};self.placed=0
         self.planning_key=None
@@ -148,12 +166,17 @@ class AutoPlayer:
         piece=state['piece'];points=cells(piece,state['start'])
         context=(piece,state.get('generation'),tuple(state['queue']))
         pos=None;q=self.waiting
+        if q and q['action']=='HOLD' and piece==q['expected'] and frame_at>q['at']+.015:
+            spawn=pose_as(piece,points,0)
+            if (spawn and spawn['x']==(4 if piece=='O' else 3) and spawn['y']<=0
+                    and not fell_from(q['board'],piece,q.get('before_pose'),points)):
+                pos=spawn
         if q and q['action'] in ('CW','CCW','180') and q.get('expected_pose') and frame_at>q['at']+.015:
             if (piece==q['piece'] and state['board']==q['board'] and state.get('generation')==q['generation']
-                    and state['queue']==q['queue'] and fell_from(state['board'],piece,q['expected_pose'],points)
+                    and queue_compatible(state['queue'],q['queue']) and fell_from(state['board'],piece,q['expected_pose'],points)
                     and not fell_from(state['board'],piece,q['before_pose'],points)):
                 pos=pose_as(piece,points,q['expected_pose']['r'])
-        if pos is None and self.pose and self.pose[0]==context:
+        if pos is None and self.pose and self.pose[0][:2]==context[:2] and queue_compatible(self.pose[0][2],context[2]):
             pos=pose_as(piece,points,self.pose[1])
         if pos is None and piece not in ('I','S','Z'):pos=dict(state['start'])
         if pos is None and min(y for x,y in points)<0:
@@ -186,6 +209,7 @@ class AutoPlayer:
         self.thinking_done=True;self.tap_delay=0
         if reset:
             self.pose=None
+            self.last_state=None
             self.waiting=None;self.chain={'combo':0,'b2b':0}
             self.hold_blocked=True;self.held_piece=None
             self.verified_hold=None;self.hold_verified=False
@@ -198,7 +222,7 @@ class AutoPlayer:
 
     def resync_action(self,reason,now,state):
         q=self.waiting
-        if q['action'] in ('L','R','CW','CCW','180','SD') and state['board']==q['board'] and state['piece']==q['piece'] and state['queue']==q['queue']:
+        if q['action'] in ('L','R','CW','CCW','180','SD') and state['board']==q['board'] and state['piece']==q['piece'] and queue_compatible(state['queue'],q['queue']):
             context=self.motion_context(state)
             old=self.failed_motion
             count=old['count']+1 if old and old['context']==context and old['action']==q['action'] else 1
@@ -208,10 +232,42 @@ class AutoPlayer:
             # swap again; place the actual visible piece and read HOLD afresh.
             self.hold_blocked=True;self.held_piece=None
             self.verified_hold=None;self.hold_verified=False
-        if state['board']!=q.get('before_board',q['board']) or state['queue']!=q['queue']:
+        if state['board']!=q.get('before_board',q['board']) or not queue_compatible(state['queue'],q['queue']):
             self.chain={'combo':0,'b2b':0}
         self.waiting=None;self.retries+=1
         self.recover(reason,now)
+
+    def natural_lock(self,before,state):
+        """Reconcile gravity locks, including a key that lost the race to lock.
+
+        NEXT alone can be HOLD, and a changed board can be garbage. Require
+        both a queue transition and the simulated lock/clear (plus garbage).
+        """
+        q=self.waiting
+        if not before or q and q['action']=='DROP':return False
+        respawn=(before['queue'] and state['piece']==before['queue'][0] and state.get('generation')!=before.get('generation')
+                 and before['start']['y']>0 and state['start']['y']<=0
+                 and state['start']['x']==(4 if state['piece']=='O' else 3))
+        if not queue_advanced(before['queue'],state['queue'],state['piece']) and not respawn:return False
+        piece=before['piece'];poses=[before['start']]
+        if q:
+            if q.get('expected_pose'):poses.append(q['expected_pose'])
+            if q['action'] in ('L','R'):poses.append(dict(before['start'],x=before['start']['x']+(-1 if q['action']=='L' else 1)))
+        for pos in poses:
+            result=locked_board(before['board'],piece,pos)
+            if not result:continue
+            board,lines,end=result
+            if board!=state['board'] and not garbage_shift(board,state['board']):continue
+            # A natural lock is not proof that a planned final spin happened.
+            # Preserve B2B on an empty lock, credit only known normal clears.
+            self.chain={'combo':self.chain['combo']+1 if lines else 0,
+                        'b2b':self.chain['b2b']+1 if lines==4 or lines and not any(any(r) for r in board) else 0 if lines else self.chain['b2b']}
+            self.release();self.plan=None;self.waiting=None;self.planning_key=None
+            self.hold_blocked=False;self.held_piece=None;self.human_considered=False
+            self.pose=None;self.reset_rhythm();self.placed+=1;self.retries=0;self.failed_motion=None;self.revision+=1
+            self.phase='ready';self.reason='Gravity lock confirmed; replanning'
+            return True
+        return False
 
     def update(self,now,state,advice,frame_at,focused,source='pixels',ambiguous=0,pause_reason=None,spawn_age_ms=None):
         if not self.enabled:return
@@ -234,6 +290,14 @@ class AutoPlayer:
             return
         if observed:self.early_spawn=None
         self.last_seen=now
+        previous=self.last_state
+        self.last_state=state
+        if previous and state.get('roundId',0)!=previous.get('roundId',0):
+            self.release();self.plan=None;self.waiting=None;self.chain={'combo':0,'b2b':0}
+            self.hold_blocked=False;self.held_piece=None;self.verified_hold=None;self.hold_verified=False
+            self.pose=None;self.revision+=1;self.reset_rhythm();self.human_considered=False
+            self.phase='ready';self.reason='New round verified';return
+        if observed and self.natural_lock(previous,state):return
         if self.recovery is not None:
             r=self.recovery
             if not observed or frame_at<=r['after'] or not fits(state['board'],state['piece'],state['start']):return
@@ -251,8 +315,11 @@ class AutoPlayer:
             if frame_at<=q['at']+.015:return
             if q['action']=='HOLD':
                 if not observed:self.phase='verify';self.reason='Verifying HOLD';return
-                queue_ok=q['old_hold'] is not None or state['queue'][:2]==q['queue'][1:3]
-                if state['piece']==q['expected'] and queue_ok and (state['board']==q['board'] or garbage_shift(q['board'],state['board'])):
+                queue_ok=queue_compatible(q['queue'],state['queue']) if q['old_hold'] is not None else bool(q['queue']) and queue_compatible(q['queue'][1:],state['queue'])
+                same_type=q['outgoing']==q['expected']
+                reset_pose=(state['start']['r']==0 and state['start']['x']==(4 if state['piece']=='O' else 3) and state['start']['y']<=0
+                            and not fell_from(q['board'],state['piece'],q.get('before_pose'),cells(state['piece'],state['start'])))
+                if state['piece']==q['expected'] and queue_ok and (not same_type or reset_pose) and (state['board']==q['board'] or garbage_shift(q['board'],state['board'])):
                     self.verified_hold=q['outgoing'];self.hold_verified=True
                     self.plan=None;self.waiting=None;self.planning_key=None;self.phase='ready';self.reason='HOLD confirmed; planning';return
                 if now-q['at']>.7:self.resync_action('HOLD missed; using visible piece',now,state)
@@ -260,7 +327,7 @@ class AutoPlayer:
             if q['action']=='DROP':
                 # Never drop the same piece twice: await a verified new board
                 # and a new active piece/preview generation.
-                changed=state.get('generation')!=q['generation'] or state['queue']!=q['queue']
+                changed=state.get('generation')!=q['generation'] or not queue_compatible(state['queue'],q['queue'])
                 if not observed:
                     n=min(3,len(q['queue'])-1,len(state['queue']))
                     known_next=n>=2 and state['piece']==q['queue'][0] and state['queue'][:n]==q['queue'][1:n+1] and state['queue']!=q['queue']
@@ -296,9 +363,9 @@ class AutoPlayer:
                 if not observed:
                     if q['action']=='SD':self.release()
                     self.phase='verify';self.reason='Early move; verifying pose';return
-                if state['board']!=q['board'] or state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or state['queue']!=q['queue']:
+                if state['board']!=q['board'] or state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or not queue_compatible(state['queue'],q['queue']):
                     self.release()
-                    if state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or state['queue']!=q['queue']:self.reset_rhythm()
+                    if state['piece']!=q['piece'] or state.get('generation')!=q['generation'] or not queue_compatible(state['queue'],q['queue']):self.reset_rhythm()
                     self.plan=None;self.waiting=None;self.phase='ready';self.reason='Field changed; replanning';return
                 actual=cells(state['piece'],state['start']);before=q['cells']
                 if q['action'] in ('CW','CCW','180') and q.get('expected_pose'):
@@ -377,11 +444,11 @@ class AutoPlayer:
             if c.get('useHold'):
                 if self.hold_blocked or not state.get('allowHold') or state.get('canHold') is False:return
                 expected=state.get('hold') or (state['queue'][0] if state['queue'] else None)
-                if not expected or expected==state['piece']:return
+                if not expected:return
                 if not self.send('HOLD',now):self.recover('HOLD input failed; replanning',now);return
                 self.early_spawn=None
                 self.hold_blocked=True;self.held_piece=state['piece']
-                self.waiting={'action':'HOLD','at':now,'expected':expected,'outgoing':state['piece'],'old_hold':state.get('hold'),'board':state['board'],'queue':state['queue']}
+                self.waiting={'action':'HOLD','at':now,'expected':expected,'outgoing':state['piece'],'old_hold':state.get('hold'),'board':state['board'],'queue':state['queue'],'before_pose':dict(state['start'])}
                 self.phase='verify';self.reason='Verifying HOLD';return
             while path and path[-1] in ('D','SD'):path.pop()
             if any(a not in ('L','R','CW','CCW','180','SD') for a in path):self.reason='Waiting for an executable route';return
@@ -398,7 +465,13 @@ class AutoPlayer:
                        'auto':c.get('auto',{}),'intent':c.get('intent'),'comboPlan':c.get('comboPlan',0),
                        'pcVerified':c.get('pcVerified',False),'pcPieces':c.get('pcPieces',0),'attackPlan':c.get('attackPlan',0),
                        'attackPriority':c.get('attackPriority',False)}
-        p=self.plan;action=p['actions'][p['index']]
+        p=self.plan
+        # Gravity or a kick can already put a non-spin placement on its final
+        # drop column. Do not execute a now-redundant descent/turn cycle.
+        if observed and not p.get('spin') and p['index']>=p.get('human_prefix',0):
+            end=landing(state['board'],state['piece'],state['start'])
+            if end and cells(state['piece'],end)==p['target']:p['index']=len(p['actions'])-1
+        action=p['actions'][p['index']]
         expected_pose=None
         if action=='SD':p['inTuck']=True
         # Keep the initial thought pause, but no extra key-spacing pause after
@@ -411,6 +484,14 @@ class AutoPlayer:
             if actual.get('uncertain') or actual['x']!=before['x'] or actual['r']!=before['r'] or fall<0:
                 self.plan=None;self.reason='Orientation changed; replanning';return
             expected_pose=dict(p['route'][p['index']]['pos']);expected_pose['y']+=fall
+            kicks=p['route'][p['index']].get('kicks')
+            if kicks:
+                # Gravity can change which ordered SRS+ kick wins, even when
+                # the old target still fits. Check the first legal trial now.
+                live=next((dict(x=actual['x']+dx,y=actual['y']-dy,r=expected_pose['r']) for dx,dy in kicks
+                           if fits(state['board'],state['piece'],dict(x=actual['x']+dx,y=actual['y']-dy,r=expected_pose['r']))),None)
+                if live!=expected_pose:
+                    self.plan=None;self.reason='Kick changed with gravity; replanning';return
             if not fits(state['board'],state['piece'],expected_pose):
                 self.plan=None;self.reason='Rotation surface changed; replanning';return
         if action=='SD':

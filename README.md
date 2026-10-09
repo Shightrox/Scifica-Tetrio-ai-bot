@@ -50,7 +50,7 @@ Edited illustration from a user screenshot: nickname changed to `scifica`; the c
 
 ### Windows executable
 
-Download **`Scifica-0.18.1-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
+Download **`Scifica-0.19.0-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
 
 Requires **64-bit Windows 10 2004+ or Windows 11**. The executable opens the desktop pilot; the optional browser sandbox remains available from source. Settings and logs live in `%LOCALAPPDATA%\Scifica`, outside the executable's temporary extraction directory. The first launch may take a few seconds to unpack.
 
@@ -102,7 +102,7 @@ Only the Windows overlay sends game input. The browser has its own sandbox and a
 
 Expected game bindings: **Left / Right** move, **Z** counterclockwise, **X** clockwise, **A** 180° (configurable), **Down** soft drop, **Space** hard drop, **Shift** HOLD. Match them in TETR.IO and use its **SRS+** kick table. Once a tuck descent begins, the remaining inputs use feedback speed, bypassing cosmetic pauses and base spacing to reduce lock-delay risk.
 
-Among equally short routes, the pilot prefers turning near spawn before moving sideways. Ordinary placements use **Space** from the air as soon as the last move is verified and the landing matches; there is no extra tempo pause before that drop. Tucks hold **Down** until the planned surface is observed, then release it before the next turn. A separate watchdog releases Down if fresh feedback stops or game focus changes. The initial Dynamic tempo thought pause and normal movement spacing remain configurable.
+For the same landing and clear type, the pilot first minimizes intermediate surface descents, then weighted input cost. This favors a turn near spawn and **Space** over an unnecessary **Down → rotate** cycle. Genuine tucks retain their supported descent and final spin. Before a turn, the controller rechecks which ordered kick will succeed from the current pose; gravity can change that answer. An already aligned non-spin landing can skip redundant remaining movement. Tucks hold **Down** until the planned surface is observed, then release it before the next turn. A separate watchdog releases Down if fresh feedback stops or game focus changes. Initial Dynamic tempo thought pauses remain configurable. [0.19.0 changes and regression evidence](docs/reliability-v0.19.0.md).
 
 Humanization defaults to **0%**. Extra movement is skipped for high stacks, low clearance, inferred-only poses and recovery attempts. It never randomly drops, holds or rotates. A failed detour triggers replanning from the observed position. It is a movement-style option, not a guarantee of human-like play.
 
@@ -153,6 +153,8 @@ npm test
 ```
 
 Tests cover reachable routes, wall kicks, HOLD, combo continuations, next-piece survival, worker caching, tempo, humanization, missed keys, focus loss, garbage changes, notification masks and recovery. Native key injection is mocked in automated tests. CI runs on Windows.
+
+Versioned local logs include board, pose, NEXT/HOLD, pending input and search snapshots. Replay recorded routes without sending keys with `node scripts/replay_trace.cjs path/to/autoplay-events.log`. See [diagnostics and limits](docs/reliability-v0.19.0.md#offline-diagnostics).
 
 The window check runs 40 drag cycles with 4,000 motion events, verifies child layout and release coordinates, and exercises minimize/restore, taskbar styles and negative monitor coordinates.
 

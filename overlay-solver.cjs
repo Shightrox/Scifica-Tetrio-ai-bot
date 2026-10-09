@@ -2,7 +2,8 @@ const {Worker,isMainThread,parentPort}=require('node:worker_threads');
 const E=require('./engine.js');
 const PC=require('./perfect-clear.cjs');
 const Attack=require('./attack-search.cjs');
-const identity=s=>JSON.stringify([s.board,s.piece,s.hold||null,!!s.allowHold,s.canHold!==false,!!s.simpleOnly,s.profile||'classic',s.chain||{combo:0,b2b:0},!!s.attackPriority,!!s.tucks,s.rotationSystem||'srs',!!s.allow180,!!s.start?.uncertain]);
+const resetHold=s=>s.allowHold&&s.canHold!==false&&(s.hold||s.queue?.[0])===s.piece&&s.start&&['x','y','r'].some(k=>s.start[k]!==E.entry(s.piece,!!s.simpleOnly)[k]);
+const identity=s=>JSON.stringify([s.board,s.piece,s.hold||null,!!s.allowHold,s.canHold!==false,!!resetHold(s),!!s.simpleOnly,s.profile||'classic',s.chain||{combo:0,b2b:0},!!s.attackPriority,!!s.tucks,s.rotationSystem||'srs',!!s.allow180,!!s.start?.uncertain]);
 const family=s=>JSON.stringify([identity(s),s.queue]);
 if(!isMainThread){
   // Warm worker: no process startup or termination per falling piece/frame.
@@ -21,7 +22,7 @@ if(!isMainThread){
           continuation=pc.sequence;
         }else result=null;
       }
-      if(!result)result=E.analyze({...m.state,depth:pressure?(m.state.tucks?6:4):3,rootLimit:pressure?6:8,beamWidth:3});
+      if(!result)result=E.analyze({...m.state,depth:pressure?(m.state.tucks?6:4):3,rootLimit:pressure?6:8,beamWidth:3,maxMs:pressure?140:90});
       if(pressure&&!continuation){
         const chain=Attack.find(m.state),c=chain.sequence?.[0].candidate;
         if(c&&c.value>result.candidates[0]?.value){
@@ -41,9 +42,15 @@ if(!isMainThread){
   const cache=new Map();
   const proofs=new Map();
   const contexts=new Map();
-  const background=new Worker(__filename);
+  let background=null,closing=false,restartTimer=null,watchdog=null;
   const emit=v=>process.stdout.write(JSON.stringify(v)+'\n');
   const shapeKey=c=>c.piece+':'+E.SHAPES[c.piece][c.pos.r].map(([x,y])=>(y+c.pos.y)*10+x+c.pos.x).sort((a,b)=>a-b).join(',')+':'+(c.spin||'');
+  function rerouted(c,p){
+    const weight=c.auto?.mode==='survive'?.9:c.auto?.mode==='attack'?.3:.45;
+    const adjustment=((c.routeCost||0)-(p.routeCost||0))*weight;
+    return {...c,pos:p.pos,path:p.path,route:p.route,requiresSoftDrop:p.requiresSoftDrop,routeCost:p.routeCost,surfaceDescents:p.surfaceDescents,
+      value:c.value+adjustment,score:c.score+adjustment,stepReward:c.stepReward+adjustment};
+  }
   function rebase(result,state){
     const reachable=new Map(E.placements(state.board,state.piece,state.start,!!state.simpleOnly,false,!!state.tucks,state).map(c=>[shapeKey(c),c]));
     let held=null;
@@ -51,11 +58,12 @@ if(!isMainThread){
       if(c.useHold){
         if(!state.allowHold||state.canHold===false||c.piece!==(state.hold||state.queue[0]))return null;
         if(!held)held=new Map(E.placements(state.board,c.piece,E.entry(c.piece,!!state.simpleOnly),!!state.simpleOnly,false,!!state.tucks,state).map(p=>[shapeKey(p),p]));
-        const p=held.get(shapeKey(c));return p?{...c,pos:p.pos,path:p.path,route:p.route,requiresSoftDrop:p.requiresSoftDrop,nextQueue:state.hold?state.queue.slice():state.queue.slice(1),newHold:state.piece}:null;
+        const p=held.get(shapeKey(c));return p?{...rerouted(c,p),nextQueue:state.hold?state.queue.slice():state.queue.slice(1),newHold:state.piece}:null;
       }
-      const p=reachable.get(shapeKey(c));return p?{...c,pos:p.pos,path:p.path,route:p.route,requiresSoftDrop:p.requiresSoftDrop,nextQueue:state.queue.slice(),newHold:state.hold}:null;
+      const p=reachable.get(shapeKey(c));return p?{...rerouted(c,p),nextQueue:state.queue.slice(),newHold:state.hold}:null;
     }).filter(Boolean);
-    return candidates.length?{...result,candidates}:null;
+    candidates.sort((a,b)=>b.value-a.value);
+    return candidates.length?{...result,candidates,rebasedLost:candidates.length<result.candidates.length}:null;
   }
   function store(key,result,proof,state){
     cache.delete(key);cache.set(key,result);if(proof)proofs.set(key,proof);else proofs.delete(key);
@@ -89,23 +97,26 @@ if(!isMainThread){
     }
     return null;
   }
-  function dispatch(){if(busy||!pending)return;busy=pending;pending=null;background.postMessage(busy);}
+  function dispatch(){if(busy||!pending||!background)return;busy=pending;pending=null;background.postMessage(busy);
+    watchdog=setTimeout(()=>restart(background,'Search worker timed out'),3000);}
   function deepen(state,key){
-    if(cache.has(key))return;
     if(busy?.key===key){pending=null;return;}
     pending={state,key};dispatch();
   }
-  background.on('message',m=>{
+  function onResult(m){
     if(m.partial){
       if(latest?.key===m.key){const result=rebase(m.result,latest.state);if(result)emit({id:latest.id,stage:'refined',result,ms:m.ms});}
       return;
     }
-    const completed=busy;busy=null;
+    clearTimeout(watchdog);const completed=busy;busy=null;
     if(m.result)store(m.key,m.result,m.continuation,completed.state);
     if(m.continuation&&latest?.key===m.key)remember(m.continuation);
     if(latest?.key===m.key){
       const result=continuation(latest.state)||(m.result&&rebase(m.result,latest.state));
-      emit(result?{id:latest.id,stage:'final',result,cache:false,ms:m.ms}:{id:latest.id,stage:'done',detail:m.error});
+      if(!result&&m.result?.candidates.length&&JSON.stringify(completed.state.start)!==JSON.stringify(latest.state.start)){
+        cache.delete(m.key);proofs.delete(m.key);contexts.delete(m.key);
+        pending={state:latest.state,key:latest.key};
+      }else emit(result?{id:latest.id,stage:'final',result,cache:false,ms:m.ms}:{id:latest.id,stage:'done',detail:m.error});
     }
     // One predicted position, only when no real position is waiting.
     if(!pending&&completed&&latest?.key===m.key&&m.result?.candidates.length){
@@ -114,8 +125,24 @@ if(!isMainThread){
         const key=family(state);if(!cache.has(key))pending={state,key};}
     }
     dispatch();
-  });
-  background.on('error',error=>{busy=null;pending=null;if(latest)emit({id:latest.id,stage:'done',detail:String(error)});});
+  }
+  function restart(worker,detail){
+    if(closing||worker!==background)return;
+    background=null;clearTimeout(watchdog);busy=null;
+    pending=latest?{state:latest.state,key:latest.key}:null;
+    worker.terminate();
+    if(latest)emit({id:latest.id,stage:'worker-restart',detail});
+    restartTimer=setTimeout(startWorker,100);
+  }
+  function startWorker(){
+    if(closing)return;
+    const worker=new Worker(__filename);background=worker;
+    worker.on('message',m=>{if(worker===background)onResult(m);});
+    worker.on('error',error=>restart(worker,String(error)));
+    worker.on('exit',code=>restart(worker,'Search worker exited: '+code));
+    dispatch();
+  }
+  startWorker();
   readline.createInterface({input:process.stdin}).on('line',line=>{
     let m;
     try{
@@ -129,11 +156,19 @@ if(!isMainThread){
         for(const [k,c] of contexts)if(c.identity===id&&c.queue.length<state.queue.length&&c.queue.every((t,i)=>state.queue[i]===t)){hitKey=k;break;}
       }
       const hit=cache.get(hitKey),cached=hit&&rebase(hit,state);
-      if(cached){if(proofs.has(hitKey))remember(proofs.get(hitKey));pending=null;emit({id:m.id,stage:'final',cache:true,result:cached,ms:performance.now()-at});return;}
+      if(cached){
+        if(proofs.has(hitKey))remember(proofs.get(hitKey));
+        const complete=hitKey===key&&!cached.rebasedLost||!!continuation(state)||m.refine===false;
+        emit({id:m.id,stage:complete?'final':'refined',cache:true,result:cached,ms:performance.now()-at});
+        if(complete)pending=null;else deepen(state,key);
+        return;
+      }
+      // An unreachable cached top-three is not an answer for this pose.
+      if(hit){cache.delete(hitKey);proofs.delete(hitKey);contexts.delete(hitKey);}
       const quick=E.analyze({...state,depth:1});
       emit({id:m.id,stage:'fast',result:quick,cache:false,ms:performance.now()-at});
       if(state.queue.length&&m.refine!==false)deepen(state,key);
       else emit({id:m.id,stage:'done'});
     }catch(error){emit({id:m?.id,stage:'error',error:String(error)});}
-  }).on('close',()=>background.terminate());
+  }).on('close',()=>{closing=true;clearTimeout(restartTimer);clearTimeout(watchdog);background?.terminate();});
 }

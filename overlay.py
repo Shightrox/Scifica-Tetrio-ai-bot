@@ -7,7 +7,7 @@ import ctypes as C
 from ctypes import wintypes as W
 import json
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import RotatingFileHandler, QueueHandler, QueueListener
 import os
 import queue
 import subprocess
@@ -18,7 +18,7 @@ from tkinter import messagebox
 from autoplay import AutoPlayer
 from game_input import GameInput
 from window_chrome import WindowChrome
-from app_runtime import RESOURCE_ROOT, data_directory, node_executable
+from app_runtime import RESOURCE_ROOT, VERSION, data_directory, node_executable
 
 from overlay_vision import Reader, SHAPES, detect
 from field_geometry import GeometryGuard, capture_bounds, overlaps, panel_position
@@ -62,8 +62,10 @@ class Overlay:
         self.root.attributes('-topmost',True)
         self.data_dir=data_directory()
         self.events=logging.getLogger('tetris-autoplay');self.events.setLevel(logging.INFO)
-        handler=RotatingFileHandler(self.data_dir/'autoplay-events.log',maxBytes=500000,backupCount=1,encoding='utf-8')
-        handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'));self.events.addHandler(handler)
+        handler=RotatingFileHandler(self.data_dir/'autoplay-events.log',maxBytes=8000000,backupCount=2,encoding='utf-8')
+        handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+        event_queue=queue.Queue();self.events.addHandler(QueueHandler(event_queue))
+        self.event_listener=QueueListener(event_queue,handler);self.event_listener.start()
         self.last_player_status=None
         self.stop=threading.Event();self.frames=queue.Queue(maxsize=1);self.answers=queue.Queue()
         self.geometries=queue.Queue(maxsize=1);self.game_blocked=None;self.notice_cells=0
@@ -218,7 +220,20 @@ class Overlay:
                                      stderr=subprocess.DEVNULL,text=True,encoding='utf-8',bufsize=1,
                                      creationflags=subprocess.CREATE_NO_WINDOW,cwd=ROOT)
         self.solver_generation+=1;self.solver_retry_at=None
+        self.last_solver_reply=time.perf_counter()
+        self.solver_requests=queue.Queue(maxsize=1)
+        threading.Thread(target=self.solver_input,args=(self.solver,self.solver_generation,self.solver_requests),daemon=True).start()
         threading.Thread(target=self.solver_output,args=(self.solver,self.solver_generation),daemon=True).start()
+
+    def solver_input(self,process,generation,requests):
+        # Pipe backpressure must never block Tk, capture, or key release.
+        while not self.stop.is_set() and generation==self.solver_generation:
+            try:message=requests.get(timeout=.1)
+            except queue.Empty:continue
+            try:process.stdin.write(message);process.stdin.flush()
+            except (OSError,ValueError):
+                if not self.stop.is_set():self.answers.put({'stage':'fatal','error':'Search input stopped.','worker':generation})
+                return
 
     def solver_failed(self,now,reason):
         if self.solver_retry_at is not None:return
@@ -310,9 +325,7 @@ class Overlay:
         if not self.pending or self.solver_retry_at is not None:return
         state,key,at=self.pending;self.pending=None;self.serial+=1
         self.job={'id':self.serial,'key':key,'at':at}
-        try:
-            self.solver.stdin.write(json.dumps({'id':self.serial,'state':state},separators=(',',':'))+'\n');self.solver.stdin.flush()
-        except (OSError,ValueError):self.solver_failed(time.perf_counter(),'Search stopped.')
+        newest(self.solver_requests,json.dumps({'id':self.serial,'state':state},separators=(',',':'))+'\n')
 
     def check_window(self,now):
         if now-self.last_window_check<.12:return
@@ -372,6 +385,7 @@ class Overlay:
                         self.seen_at=now
                         if self.vision_source in ('pixels','partial','fragments'):self.geometry_good_at=f['at']
                         state={'board':v['board'],'piece':v['active']['piece'],'start':v['active']['start'],'queue':v['queue'],'generation':v.get('generation',0),
+                               'roundId':v.get('roundId',0),
                                'simpleOnly':True,'tucks':True,'rotationSystem':'srs+','allow180':bool(self.player.vk.get('180')),'profile':'versus','chain':dict(self.player.chain),'controllerRevision':self.player.revision,'attackPriority':self.attack_priority.get(),
                                'hold':held,'allowHold':self.use_hold.get() and hold_known,'canHold':not self.player.hold_blocked}
                         state=self.player.resolve_pose(state,self.vision_source,f['at'])
@@ -389,6 +403,7 @@ class Overlay:
             try:a=self.answers.get_nowait()
             except queue.Empty:break
             if a.get('worker')!=self.solver_generation:continue
+            self.last_solver_reply=now
             if a.get('stage')=='fatal':self.solver_failed(now,a['error']);continue
             if not self.job or a.get('id')!=self.job['id']:continue
             if self.job['key']==self.current_key and 'result' in a:
@@ -405,6 +420,7 @@ class Overlay:
                 self.advice=None;self.player.recover('Search failed; retrying with fresh frame',now,delay=.4)
                 self.status.set(a.get('error','Search error'))
             if a['stage'] in ('final','done','error'):self.job=None
+        if self.job and now-self.last_solver_reply>3:self.solver_failed(now,'Search stopped responding.')
         self.send_pending()
         foreground=user.GetForegroundWindow()
         pause_reason=None
@@ -439,11 +455,15 @@ class Overlay:
         label='PAUSED' if self.player.phase=='paused' else ('REPLAN' if self.player.phase=='recover' else ('ARMED' if self.player.enabled else 'OFF'))
         self.auto_status.set(f'{label} / {self.player.reason}')
         self.auto_button.configure(text='[x] Stop autopilot' if self.player.enabled else '[>] Start autopilot',bg='#efad80' if self.player.enabled else GREEN)
-        self.events.info(json.dumps({'enabled':state[0],'phase':state[1],'reason':state[2],'placed':state[3],
+        self.events.info(json.dumps({'schema':2,'version':VERSION,'at':time.perf_counter(),
+                                    'enabled':state[0],'phase':state[1],'reason':state[2],'placed':state[3],
                                     'source':self.vision_source,'ambiguous':self.ambiguity,
                                     'spawn_age_ms':round(self.spawn_age_ms) if self.spawn_age_ms is not None else None,
                                     'frame_age_ms':round((time.perf_counter()-self.last_image_at)*1000) if self.last_image_at else None,
-                                    'generation':self.live_state.get('generation') if self.live_state else None},ensure_ascii=False))
+                                    'generation':self.live_state.get('generation') if self.live_state else None,
+                                    'state':self.live_state,'advice':self.advice,'plan':self.player.plan,'waiting':self.player.waiting,
+                                    'chain':self.player.chain,'hold_blocked':self.player.hold_blocked,
+                                    'tempo':{'speed':self.player.key_rate,'dynamic':self.player.dynamic_tempo,'human':self.player.humanization}},ensure_ascii=False))
 
     def draw(self):
         # The large transparent canvas is changed only on advice/state changes.
@@ -500,6 +520,8 @@ class Overlay:
         user.SetWindowLongPtrW(self.control_handle,-4,self.old_proc)
         try:self.solver.terminate();self.solver.wait(timeout=2)
         except (OSError,subprocess.TimeoutExpired):self.solver.kill()
+        self.event_listener.stop()
+        for handler in self.event_listener.handlers:handler.close()
         self.root.destroy()
 
     def run(self):self.root.mainloop()
