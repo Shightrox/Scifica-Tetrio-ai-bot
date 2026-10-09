@@ -2,7 +2,7 @@ const {Worker,isMainThread,parentPort}=require('node:worker_threads');
 const E=require('./engine.js');
 const PC=require('./perfect-clear.cjs');
 const Attack=require('./attack-search.cjs');
-const identity=s=>JSON.stringify([s.board,s.piece,s.hold||null,!!s.allowHold,s.canHold!==false,!!s.simpleOnly,s.profile||'classic',s.chain||{combo:0,b2b:0},!!s.attackPriority,!!s.tucks]);
+const identity=s=>JSON.stringify([s.board,s.piece,s.hold||null,!!s.allowHold,s.canHold!==false,!!s.simpleOnly,s.profile||'classic',s.chain||{combo:0,b2b:0},!!s.attackPriority,!!s.tucks,s.rotationSystem||'srs',!!s.allow180,!!s.start?.uncertain]);
 const family=s=>JSON.stringify([identity(s),s.queue]);
 if(!isMainThread){
   // Warm worker: no process startup or termination per falling piece/frame.
@@ -45,12 +45,12 @@ if(!isMainThread){
   const emit=v=>process.stdout.write(JSON.stringify(v)+'\n');
   const shapeKey=c=>c.piece+':'+E.SHAPES[c.piece][c.pos.r].map(([x,y])=>(y+c.pos.y)*10+x+c.pos.x).sort((a,b)=>a-b).join(',')+':'+(c.spin||'');
   function rebase(result,state){
-    const reachable=new Map(E.placements(state.board,state.piece,state.start,!!state.simpleOnly,false,!!state.tucks).map(c=>[shapeKey(c),c]));
+    const reachable=new Map(E.placements(state.board,state.piece,state.start,!!state.simpleOnly,false,!!state.tucks,state).map(c=>[shapeKey(c),c]));
     let held=null;
     const candidates=result.candidates.map(c=>{
       if(c.useHold){
         if(!state.allowHold||state.canHold===false||c.piece!==(state.hold||state.queue[0]))return null;
-        if(!held)held=new Map(E.placements(state.board,c.piece,E.entry(c.piece,!!state.simpleOnly),!!state.simpleOnly,false,!!state.tucks).map(p=>[shapeKey(p),p]));
+        if(!held)held=new Map(E.placements(state.board,c.piece,E.entry(c.piece,!!state.simpleOnly),!!state.simpleOnly,false,!!state.tucks,state).map(p=>[shapeKey(p),p]));
         const p=held.get(shapeKey(c));return p?{...c,pos:p.pos,path:p.path,route:p.route,requiresSoftDrop:p.requiresSoftDrop,nextQueue:state.hold?state.queue.slice():state.queue.slice(1),newHold:state.piece}:null;
       }
       const p=reachable.get(shapeKey(c));return p?{...c,pos:p.pos,path:p.path,route:p.route,requiresSoftDrop:p.requiresSoftDrop,nextQueue:state.queue.slice(),newHold:state.hold}:null;
@@ -79,6 +79,7 @@ if(!isMainThread){
       if(s.piece!==state.piece||(s.hold||null)!==(state.hold||null)||s.profile!==state.profile||
         !!s.allowHold!==!!state.allowHold||(s.canHold!==false)!==(state.canHold!==false)||
         !!s.simpleOnly!==!!state.simpleOnly||!!s.tucks!==!!state.tucks||JSON.stringify(s.board)!==JSON.stringify(state.board)||
+        (s.rotationSystem||'srs')!==(state.rotationSystem||'srs')||!!s.allow180!==!!state.allow180||
         (s.chain?.combo||0)!==(state.chain?.combo||0)||(s.chain?.b2b||0)!==(state.chain?.b2b||0)||
         s.queue.some((t,i)=>t!==state.queue[i]))continue;
       // Newly revealed preview tails cannot invalidate a proved path that only

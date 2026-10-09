@@ -53,9 +53,9 @@ function materialize(state,steps){
   let current={...state,queue:state.queue.slice()},sequence=[];
   for(const step of steps){
     const found=E.choices(current.board,current.piece,current.queue,current.hold,current.start,true,
-      !!current.allowHold&&current.canHold!==false).find(c=>c.piece===step.piece&&c.useHold===step.useHold&&samePosition(c.pos,step.pos,c.piece));
+      !!current.allowHold&&current.canHold!==false,false,current).find(c=>c.piece===step.piece&&c.useHold===step.useHold&&samePosition(c.pos,step.pos,c.piece));
     if(!found)return null;
-    E.evaluate(found,E.metrics(current.board),current.chain||{},current.profile||'versus',true,!!current.allowHold,!!current.attackPriority);
+    E.evaluate(found,E.metrics(current.board),current.chain||{},current.profile||'versus',true,!!current.allowHold,!!current.attackPriority,false,current);
     if(!found.nextSafe)return null;
     sequence.push({state:current,candidate:found});
     current={...current,board:found.board,piece:found.nextQueue[0],queue:found.nextQueue.slice(1),hold:found.newHold,
@@ -86,7 +86,7 @@ function find(state,{maxMs=24,maxNodes=12000,maxPieces=6}={}){
   if(E.autoPolicy(E.metrics(state.board)).mode==='survive')return report;
   let timedOut=false;
   const roots=E.choices(state.board,state.piece,state.queue||[],state.hold,state.start,true,
-    !!state.allowHold&&state.canHold!==false);
+    !!state.allowHold&&state.canHold!==false,false,state);
   const failed=new Set();
   function visit(rows,piece,queue,hold,remaining,ceiling){
     if(!remaining)return rows.length?null:[];

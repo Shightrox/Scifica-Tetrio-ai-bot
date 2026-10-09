@@ -154,6 +154,12 @@ class Overlay:
         self.player.start(time.perf_counter());self.current_key=None;self.advice=None
         self.enabled=True;self.focus_game()
 
+    def change_rotation_key(self,key):
+        if self.player.vk.get('180')==key:return
+        self.player.vk['180']=key
+        self.player.recover('Rotation binding changed; replanning',time.perf_counter())
+        self.current_key=None;self.pending=None;self.advice=None
+
     def select_region(self):
         if self.selector:return
         self.player.stop('Selecting field')
@@ -366,8 +372,9 @@ class Overlay:
                         self.seen_at=now
                         if self.vision_source in ('pixels','partial','fragments'):self.geometry_good_at=f['at']
                         state={'board':v['board'],'piece':v['active']['piece'],'start':v['active']['start'],'queue':v['queue'],'generation':v.get('generation',0),
-                               'simpleOnly':True,'tucks':True,'profile':'versus','chain':dict(self.player.chain),'controllerRevision':self.player.revision,'attackPriority':self.attack_priority.get(),
+                               'simpleOnly':True,'tucks':True,'rotationSystem':'srs+','allow180':bool(self.player.vk.get('180')),'profile':'versus','chain':dict(self.player.chain),'controllerRevision':self.player.revision,'attackPriority':self.attack_priority.get(),
                                'hold':held,'allowHold':self.use_hold.get() and hold_known,'canHold':not self.player.hold_blocked}
+                        state=self.player.resolve_pose(state,self.vision_source,f['at'])
                         self.live_state=state
                         key=json.dumps(state,separators=(',',':'))
                         if key!=self.current_key:
@@ -457,7 +464,7 @@ class Overlay:
                 self.canvas.create_rectangle(xx+6,yy+6,xx+cw-6,yy+ch-6,outline='#edfbd5',width=1)
             path=list(c['path'])
             while path and path[-1] in ('D','SD'):path.pop()
-            symbols={'L':'←','R':'→','D':'↓','SD':'↓','CW':'↻','CCW':'↺'};groups=[]
+            symbols={'L':'←','R':'→','D':'↓','SD':'↓','CW':'↻','CCW':'↺','180':'180°'};groups=[]
             for step in path:
                 if groups and groups[-1][0]==step:groups[-1][1]+=1
                 else:groups.append([step,1])

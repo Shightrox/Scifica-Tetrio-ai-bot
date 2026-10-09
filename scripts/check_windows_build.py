@@ -30,5 +30,7 @@ with tempfile.TemporaryDirectory(prefix='Scifica isolated build ') as folder:
     assert json.loads(prefs.read_text(encoding='utf-8'))['humanization']==23
     assert json.loads(prefs.read_text(encoding='utf-8'))['attack_priority'] is False
     assert json.loads(prefs.read_text(encoding='utf-8'))['dynamic_tempo']==41
+    assert json.loads(prefs.read_text(encoding='utf-8'))['rotation_180']=='C'
+    assert checks['rotation_routes']=='180 J single + SRS+ I single'
     assert checks['perfect_clear_pieces']==4
     print('PASS isolated EXE: GUI, bundled search worker, vision, settings after exit; no game input')

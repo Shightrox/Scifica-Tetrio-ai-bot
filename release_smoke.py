@@ -59,7 +59,7 @@ def run(report_path):
         board[18]=[None if v=='.' else 'J' for v in 'XXX...XXXX']
         board[19]=[None if v=='.' else 'J' for v in 'XXXX.XXXXX']
         state={'board':board,'piece':'T','start':{'x':3,'y':-2,'r':0},'queue':['I','O','S'],
-               'simpleOnly':True,'tucks':True,'profile':'versus','attackPriority':True,'allowHold':False}
+               'simpleOnly':True,'tucks':True,'rotationSystem':'srs+','allow180':True,'profile':'versus','attackPriority':True,'allowHold':False}
         key=json.dumps(state,separators=(',',':'))
         app.advice=None;app.current_key=key;app.pending=(state,key,time.perf_counter());app.send_pending()
         deadline=time.perf_counter()+15
@@ -69,13 +69,31 @@ def run(report_path):
         assert app.advice and app.advice['candidate'].get('spin')=='full','Bundled native spin search failed'
         assert app.advice['candidate']['requiresSoftDrop'] and app.advice['candidate']['lines']==2
         report['native_t_spin']='double with verified descent checkpoints'
+        rotation_check="""
+        const E=require('./engine.js');
+        for(const [piece,rows,target] of [['J',['.......X.X','..........','XXXXXXX...'],{x:7,y:18,r:0}],
+          ['I',['....X...X.','...X......','.X.....X.X','...X.X....','XXXX.XXXXX'],{x:2,y:16,r:1}]]){
+          const board=E.empty();rows.forEach((r,i)=>board[20-rows.length+i]=[...r].map(v=>v==='X'?'G':null));
+          const options=E.placements(board,piece,E.entry(piece,true),true,false,true,{rotationSystem:'srs+',allow180:true});
+          const c=options.find(c=>JSON.stringify(c.pos)===JSON.stringify(target));
+          if(!c||c.lines!==1||!c.requiresSoftDrop||piece==='J'&&!c.path.includes('180'))throw Error('Missing rotation route: '+piece);
+          let p=E.entry(piece,true);for(const a of c.path)p=E.move(board,piece,p,a,'srs+');
+          if(JSON.stringify(p)!==JSON.stringify(c.pos))throw Error('Invalid rotation route: '+piece);
+        }
+        process.stdout.write('180 J single + SRS+ I single');
+        """
+        report['rotation_routes']=subprocess.check_output([node,'-e',rotation_check],cwd=RESOURCE_ROOT,text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,timeout=15)
         report['tk']=app.root.tk.call('info','patchlevel')
         report['capture_exclusion']=True # Overlay construction fails if unsupported.
-        app.key_rate.set(17);app.humanization.set(23);app.dynamic_tempo.set(41);app.attack_priority.set(False);app.save_preferences()
+        app.key_rate.set(17);app.humanization.set(23);app.dynamic_tempo.set(41);app.attack_priority.set(False)
+        assert app.rotation_180.get()=='A' and app.player.vk['180']==0x41
+        app.rotation_180.set('C');app.change_rotation_key(0x43);app.save_preferences()
         stored=preferences.load(app.data_dir/'settings.json')
         assert stored['key_rate']==17 and stored['humanization']==23,stored
         assert stored['attack_priority'] is False
         assert stored['dynamic_tempo']==41
+        assert stored['rotation_180']=='C' and app.player.vk['180']==0x43
         assert not app.player.enabled
         report['persistent_data']=not app.data_dir.is_relative_to(RESOURCE_ROOT) if report['frozen'] else True
         assert report['persistent_data']

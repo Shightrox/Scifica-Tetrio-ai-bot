@@ -21,8 +21,8 @@ function find(state,{maxMs=32,maxNodes=140,maxPieces=6}={}){
     const key=JSON.stringify([s.board,s.piece,s.queue,s.hold,s.canHold,s.chain]);
     if((seen.get(key)??-Infinity)>=value)return;seen.set(key,value);nodes++;
     const before=E.metrics(s.board);
-    const candidates=E.choices(s.board,s.piece,s.queue,s.hold,s.start,s.simpleOnly,s.allowHold&&s.canHold!==false,s.tucks).filter(c=>c.lines);
-    for(const c of candidates)E.evaluate(c,before,s.chain||{},s.profile,s.simpleOnly,s.allowHold,s.attackPriority,s.tucks);
+    const candidates=E.choices(s.board,s.piece,s.queue,s.hold,s.start,s.simpleOnly,s.allowHold&&s.canHold!==false,s.tucks,s).filter(c=>c.lines);
+    for(const c of candidates)E.evaluate(c,before,s.chain||{},s.profile,s.simpleOnly,s.allowHold,s.attackPriority,s.tucks,s);
     candidates.sort((a,b)=>b.score-a.score);
     // Keep both exchange branches even when several immediate clears tie.
     const branches=candidates.slice(0,4);

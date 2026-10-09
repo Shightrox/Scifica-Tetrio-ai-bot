@@ -74,6 +74,7 @@ def build(app, root_path):
     app.dynamic_tempo=tk.DoubleVar(value=saved['dynamic_tempo'])
     app.use_hold=tk.BooleanVar(value=saved['use_hold'])
     app.swap_rotation=tk.BooleanVar(value=saved['swap_rotation'])
+    app.rotation_180=tk.StringVar(value=saved['rotation_180'])
     app.attack_priority=tk.BooleanVar(value=saved['attack_priority'])
     app._save_job=None
     def save_settings():
@@ -82,10 +83,11 @@ def build(app, root_path):
         except OSError: app.status.set('Settings could not be saved.')
     def values():
         return dict(key_rate=app.key_rate.get(),humanization=app.humanization.get(),dynamic_tempo=app.dynamic_tempo.get(),
-                    use_hold=app.use_hold.get(),swap_rotation=app.swap_rotation.get(),attack_priority=app.attack_priority.get())
+                    use_hold=app.use_hold.get(),swap_rotation=app.swap_rotation.get(),attack_priority=app.attack_priority.get(),rotation_180=app.rotation_180.get())
     def changed(*args):
         app.player.configure(app.key_rate.get(),app.humanization.get(),app.dynamic_tempo.get())
         app.player.vk.update(CW=0x5a if app.swap_rotation.get() else 0x58,CCW=0x58 if app.swap_rotation.get() else 0x5a)
+        app.change_rotation_key(preferences.ROTATION_KEYS[app.rotation_180.get()])
         app.speed_label.set('MAX' if app.key_rate.get()>=30 else f'{app.key_rate.get():.0f} keys/s')
         app.human_label.set(f'{app.humanization.get():.0f}%')
         app.tempo_label.set(f'{app.dynamic_tempo.get():.0f}%')
@@ -106,6 +108,13 @@ def build(app, root_path):
     for text,var in [('HOLD / Shift',app.use_hold),('Swap Z / X',app.swap_rotation)]:
         tk.Checkbutton(toggles,text=text,variable=var,command=changed,bg=BG,fg=FG,selectcolor=PANEL,
                        activebackground=BG,activeforeground=ACCENT,font=(FONT,9),bd=0,highlightthickness=0).pack(side='left',padx=(0,16))
+    rotation_row=tk.Frame(body,bg=BG);rotation_row.pack(fill='x',pady=(5,0))
+    tk.Label(rotation_row,text='180 key',font=(FONT,9),bg=BG,fg=FG).pack(side='left')
+    key_menu=tk.OptionMenu(rotation_row,app.rotation_180,*preferences.ROTATION_KEYS,command=changed)
+    key_menu.configure(bg=PANEL,fg=ACCENT,activebackground=LINE,activeforeground=FG,font=(FONT,9),bd=0,highlightthickness=0,width=4)
+    key_menu['menu'].configure(bg=PANEL,fg=FG,activebackground=LINE,activeforeground=FG,font=(FONT,9),bd=0)
+    key_menu.pack(side='left',padx=8)
+    tk.Label(rotation_row,text='SRS+ / match game binding',font=(FONT,8),bg=BG,fg=MUTED).pack(side='right')
     section('03 / PILOT')
     attack_row=tk.Frame(body,bg=BG);attack_row.pack(fill='x',pady=(0,8))
     def strategy_changed():

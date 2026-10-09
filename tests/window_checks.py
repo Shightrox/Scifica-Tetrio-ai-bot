@@ -127,9 +127,15 @@ def run():
             assert app.player.waiting is pending_drop and app.player.revision > revision
             assert app.advice is None and app.live_state is None and app.job is None
             app.player.stop('Check finished')
+            app.player.start(time.perf_counter());app.player.waiting={'action':'HOLD'}
+            app.change_rotation_key(None)
+            assert app.player.vk['180'] is None and app.player.enabled and app.player.recovery
+            assert app.player.waiting['action']=='HOLD'
+            app.change_rotation_key(0x41);app.player.stop('Check finished')
             print('PASS 40 drag cycles / 4,000 queued positions, exact release, negative x,')
             print('     title bindings, stable child layout, minimize/restore and taskbar styles')
             print('PASS strategy change preserves pending DROP evidence and armed state while replanning')
+            print('PASS rotation binding change preserves pending HOLD and armed state while replanning')
         finally:
             app.close()
             for handler in list(app.events.handlers):

@@ -15,21 +15,38 @@
     '2>3':[[0,0],[2,0],[-1,0],[2,1],[-1,-2]],'3>2':[[0,0],[-2,0],[1,0],[-2,-1],[1,2]],
     '3>0':[[0,0],[1,0],[-2,0],[1,-2],[-2,1]],'0>3':[[0,0],[-1,0],[2,0],[-1,2],[2,-1]]
   };
+  // Positive kick y points upwards. TETR.IO's SRS+ changes I trial order;
+  // half turns have their own table, not two successive quarter turns.
+  // Sources and coordinate conversion: docs/rotation-system.md.
+  const IP={
+    '0>1':[[0,0],[1,0],[-2,0],[-2,-1],[1,2]],'1>0':[[0,0],[-1,0],[2,0],[-1,-2],[2,1]],
+    '1>2':[[0,0],[-1,0],[2,0],[-1,2],[2,-1]],'2>1':[[0,0],[-2,0],[1,0],[-2,1],[1,-2]],
+    '2>3':[[0,0],[2,0],[-1,0],[2,1],[-1,-2]],'3>2':[[0,0],[1,0],[-2,0],[1,2],[-2,-1]],
+    '3>0':[[0,0],[1,0],[-2,0],[1,-2],[-2,1]],'0>3':[[0,0],[-1,0],[2,0],[2,-1],[-1,2]]
+  };
+  const HALF={
+    '0>2':[[0,0],[0,1],[1,1],[-1,1],[1,0],[-1,0]],
+    '1>3':[[0,0],[1,0],[1,2],[1,1],[0,2],[0,1]],
+    '2>0':[[0,0],[0,-1],[-1,-1],[1,-1],[-1,0],[1,0]],
+    '3>1':[[0,0],[-1,0],[-1,2],[-1,1],[0,2],[0,1]]
+  };
+  const IHALF={'0>2':[[0,0],[0,1]],'1>3':[[0,0],[1,0]],'2>0':[[0,0],[0,-1]],'3>1':[[0,0],[-1,0]]};
+  const turn=a=>a==='CW'?1:a==='CCW'?3:a==='180'?2:0;
   function cells(t,r=0){let c=BASE[t].map(p=>p.slice());if(t==='O')return c;const n=t==='I'?3:2;for(let i=0;i<r;i++)c=c.map(([x,y])=>[n-y,x]);return c;}
   const SHAPES=Object.fromEntries(Object.keys(BASE).map(t=>[t,[0,1,2,3].map(r=>cells(t,r))]));
   const empty=()=>Array.from({length:H},()=>Array(W).fill(null));
   const clone=b=>b.map(r=>r.slice());
   const spawn=t=>({x:t==='O'?4:3,y:0,r:0});
   function fits(b,t,p){return SHAPES[t][p.r].every(([dx,dy])=>{const x=p.x+dx,y=p.y+dy;return x>=0&&x<W&&y>=-3&&y<H&&(y<0||!b[y][x]);});}
-  function rotation(b,t,p,a){
-    if(t==='O')return null;const r=(p.r+(a==='CW'?1:3))%4;
-    const kicks=(t==='I'?IK:KICKS)[p.r+'>'+r];
+  function rotation(b,t,p,a,rotationSystem='srs'){
+    if(t==='O'||!turn(a))return null;const r=(p.r+turn(a))%4;
+    const kicks=(a==='180'?(t==='I'?IHALF:HALF):t==='I'?(rotationSystem==='srs+'?IP:IK):KICKS)[p.r+'>'+r];
     for(let i=0;i<kicks.length;i++){const [dx,dy]=kicks[i],pos={x:p.x+dx,y:p.y-dy,r};if(fits(b,t,pos))return {pos,kick:i};}return null;
   }
-  function move(b,t,p,a){let n={...p};if(a==='L')n.x--;else if(a==='R')n.x++;else if(a==='D')n.y++;else if(a==='SD'){
+  function move(b,t,p,a,rotationSystem='srs'){let n={...p};if(a==='L')n.x--;else if(a==='R')n.x++;else if(a==='D')n.y++;else if(a==='SD'){
     while(fits(b,t,{...n,y:n.y+1}))n.y++;return n.y===p.y?null:n;
-  }else if(a==='CW'||a==='CCW'){
-    return rotation(b,t,p,a)?.pos||null;
+  }else if(turn(a)){
+    return rotation(b,t,p,a,rotationSystem)?.pos||null;
   }else {return null;
   }return fits(b,t,n)?n:null;}
   function lock(b,t,p){const out=clone(b);for(const [dx,dy] of SHAPES[t][p.r]){const y=p.y+dy,x=p.x+dx;if(y<0)return null;out[y][x]=t;}const garbageCleared=out.filter(r=>r.every(Boolean)&&r.includes('G')).length;const kept=out.filter(r=>r.some(v=>!v)),lines=H-kept.length;while(kept.length<H)kept.unshift(Array(W).fill(null));return {board:kept,lines,garbageCleared};}
@@ -95,59 +112,69 @@
     return best*availability;
   }
   const entry=(t,simple)=>simple?{...spawn(t),y:-2}:spawn(t);
-  function spinType(board,t,p,kick){
+  function spinType(board,t,p,kick,half=false){
     if(kick==null||t==='O')return null;
     const occupied=(x,y)=>x<0||x>=W||y>=H||(y>=0&&!!board[y][x]);
     if(t==='T'){
       const corners=[[0,0],[2,0],[2,2],[0,2]].map(([x,y])=>occupied(p.x+x,p.y+y));
-      if(corners.filter(Boolean).length>=3)return (corners[p.r]&&corners[(p.r+1)%4]||kick===4)?'full':'mini';
+      if(corners.filter(Boolean).length>=3)return (corners[p.r]&&corners[(p.r+1)%4]||kick===4&&!half)?'full':'mini';
     }
     // All-Mini+: immobile non-T pieces and T shapes without three corners.
     if(!fits(board,t,{...p,x:p.x-1})&&!fits(board,t,{...p,x:p.x+1})&&
        !fits(board,t,{...p,y:p.y-1})&&!fits(board,t,{...p,y:p.y+1}))return 'mini';
     return null;
   }
-  function surfacePlacements(board,t,start,firstOnly=false){
-    // Native routes descend to a verified surface, then move/rotate. Arbitrary
-    // mid-air stopping and I-piece tucks (SRS+ kicks) are deliberately excluded.
-    if(t==='I')return placements(board,t,start,true,firstOnly);
+  function surfacePlacements(board,t,start,firstOnly=false,rules={}){
+    // Native routes descend to a verified surface, then move/rotate.
     if(!fits(board,t,start))return [];
     const nodes=[{pos:start,parent:-1,a:null,kick:null}],seen=new Set(),landed=new Map();
-    const nodeKey=(p,k)=>`${p.x},${p.y},${p.r},${k==null?0:k===4?2:1}`;
+    const nodeKey=(p,k,half)=>`${p.x},${p.y},${p.r},${k==null?0:k===4&&!half?2:1}`;
     seen.add(nodeKey(start,null));
     for(let i=0;i<nodes.length;i++){
       const node=nodes[i],p=node.pos,drop=move(board,t,p,'SD'),end=drop||p;
       const locked=lock(board,t,end);
       if(locked){
         if(firstOnly)return [locked];
-        const spin=drop?null:spinType(board,t,p,node.kick);
+        const spin=drop?null:spinType(board,t,p,node.kick,node.a==='180');
         const key=SHAPES[t][end.r].map(([x,y])=>(end.y+y)*W+end.x+x).sort((a,b)=>a-b).join(',')+':'+spin;
         if(!landed.has(key)){
           const path=[];let at=i;while(nodes[at].parent!==-1){path.push(nodes[at].a);at=nodes[at].parent;}path.reverse();
           if(drop)path.push('SD');
-          let current={...start};const route=path.map(action=>{current=move(board,t,current,action);return {action,pos:current};});
+          let current={...start};const route=path.map(action=>{current=move(board,t,current,action,rules.rotationSystem);return {action,pos:current};});
           const m=metrics(locked.board),lastMotion=path.findLastIndex(a=>a!=='SD');
           landed.set(key,{...locked,piece:t,pos:end,path,route,spin,metrics:m,score:utility(m,locked.lines),
             requiresSoftDrop:path.slice(0,lastMotion).includes('SD'),perfectClear:locked.board.every(r=>r.every(v=>!v))});
         }
       }
-      for(const a of ['L','R','CW','CCW','SD']){
-        const rot=a==='CW'||a==='CCW'?rotation(board,t,p,a):null;
-        const next=rot?.pos||(a==='CW'||a==='CCW'?null:move(board,t,p,a));if(!next)continue;
-        const kick=rot?.kick??null,key=nodeKey(next,kick);if(seen.has(key))continue;
+      for(const a of actions(start,rules,'SD')){
+        const rot=turn(a)?rotation(board,t,p,a,rules.rotationSystem):null;
+        const next=rot?.pos||(turn(a)?null:move(board,t,p,a));if(!next)continue;
+        // A symmetric half turn that looks exactly like gravity (or no input)
+        // cannot be confirmed from pixels. Never make a route depend on it.
+        if(a==='180'&&unobservableHalf(t,p,next))continue;
+        const kick=rot?.kick??null,key=nodeKey(next,kick,a==='180');if(seen.has(key))continue;
         seen.add(key);nodes.push({pos:next,parent:i,a,kick});
       }
     }
     return [...landed.values()].sort((a,b)=>b.score-a.score||a.path.length-b.path.length);
   }
-  function placements(board,t,start=spawn(t),simpleOnly=false,firstOnly=false,tucks=false){
-    if(tucks)return surfacePlacements(board,t,start,firstOnly);
+  function actions(start,rules,descent){return ['L','R',...(!start.uncertain?['CW','CCW',...(rules.allow180?['180']:[])]:[]),...(descent?[descent]:[])];}
+  function unobservableHalf(t,before,after){
+    if(!['I','S','Z'].includes(t))return false;
+    const points=p=>SHAPES[t][p.r].map(([x,y])=>[x+p.x,y+p.y]);
+    const a=points(before),b=points(after),top=p=>Math.min(...p.map(c=>c[1]));
+    const key=p=>p.map(([x,y])=>[x,y-top(p)]).sort().join(';');
+    return top(b)>=top(a)&&key(a)===key(b);
+  }
+  function placements(board,t,start=spawn(t),simpleOnly=false,firstOnly=false,tucks=false,rules={}){
+    if(tucks)return surfacePlacements(board,t,start,firstOnly,rules);
     if(!fits(board,t,start))return [];const nodes=[{...start,parent:-1,a:null}],visited=new Set([`${start.x},${start.y},${start.r}`]),landed=new Set(),out=[];
     for(let i=0;i<nodes.length;i++){const origin=nodes[i];let p=origin;if(simpleOnly){p={...origin};while(move(board,t,p,'D'))p=move(board,t,p,'D');}if(simpleOnly||!move(board,t,p,'D')){
       const id=SHAPES[t][p.r].map(([dx,dy])=>(p.y+dy)*W+p.x+dx).sort((a,b)=>a-b).join(',');
       if(!landed.has(id)){landed.add(id);const locked=lock(board,t,p);if(locked){if(firstOnly)return [locked];let path=[],at=i;while(nodes[at].parent!==-1){path.push(nodes[at].a);at=nodes[at].parent;}path.reverse();if(simpleOnly)path.push(...Array(p.y-origin.y).fill('D'));const m=metrics(locked.board);out.push({piece:t,pos:{x:p.x,y:p.y,r:p.r},path,board:locked.board,lines:locked.lines,garbageCleared:locked.garbageCleared,metrics:m,score:utility(m,locked.lines),perfectClear:locked.board.every(r=>r.every(v=>!v))});}}
     }
-    for(const a of (simpleOnly?['L','R','CW','CCW']:['L','R','CW','CCW','D'])){const n=move(board,t,origin,a);if(!n)continue;const k=`${n.x},${n.y},${n.r}`;if(visited.has(k))continue;visited.add(k);nodes.push({...n,parent:i,a});}}
+    for(const a of actions(start,rules,simpleOnly?null:'D')){const n=move(board,t,origin,a,rules.rotationSystem);if(!n||a==='180'&&unobservableHalf(t,origin,n))continue;const k=`${n.x},${n.y},${n.r}`;if(visited.has(k))continue;visited.add(k);nodes.push({...n,parent:i,a});}}
+    if(rules.rotationSystem==='srs+'||rules.allow180)for(const c of out){let p={...start};c.route=c.path.map(action=>{p=move(board,t,p,action,rules.rotationSystem);return {action,pos:p};});}
     return out.sort((a,b)=>b.score-a.score||a.path.length-b.path.length);
   }
   // Private rooms can customize attack rules. This is a strategic reward,
@@ -165,16 +192,16 @@
     const bonus=8*attack+Math.min(12,Math.max(0,combo-1)*2)+(c.perfectClear?40:0)+surge*6+(c.garbageCleared||0)*4;
     return {reward:profile==='versus'?5*c.lines+bonus:9*c.lines,combo,b2b,attackEstimate:attack+(c.perfectClear?5:0)+surge};
   }
-  function choices(board,piece,queue,hold,start,simpleOnly,canHold,tucks=false){
-    const out=placements(board,piece,start||entry(piece,simpleOnly),simpleOnly,false,tucks).map(c=>({...c,useHold:false,nextQueue:queue.slice(),newHold:hold}));
+  function choices(board,piece,queue,hold,start,simpleOnly,canHold,tucks=false,rules={}){
+    const out=placements(board,piece,start||entry(piece,simpleOnly),simpleOnly,false,tucks,rules).map(c=>({...c,useHold:false,nextQueue:queue.slice(),newHold:hold}));
     if(canHold&&(hold||queue.length)){
       const t=hold||queue[0],q=hold?queue:queue.slice(1);
       // Identical-piece swaps cannot improve the reachable straight-drop set.
-      if(t!==piece)out.push(...placements(board,t,entry(t,simpleOnly),simpleOnly,false,tucks).map(c=>({...c,useHold:true,nextQueue:q.slice(),newHold:piece})));
+      if(t!==piece)out.push(...placements(board,t,entry(t,simpleOnly),simpleOnly,false,tucks,rules).map(c=>({...c,useHold:true,nextQueue:q.slice(),newHold:piece})));
     }
     return out;
   }
-  function evaluate(c,before,chain,profile,simpleOnly,allowHold,attackPriority=false,tucks=false){
+  function evaluate(c,before,chain,profile,simpleOnly,allowHold,attackPriority=false,tucks=false,rules={}){
     c.chain=tactical(c,chain,profile);
     const m=c.metrics;c.auto=autoPolicy(before);c.attackPriority=!!attackPriority;
     const danger=c.auto.mode==='survive',attack=c.auto.mode==='attack';
@@ -194,8 +221,8 @@
     c.nextSafe=true;
     if(c.nextQueue.length&&m.height>=16){
       const next=c.nextQueue[0],held=c.newHold||c.nextQueue[1];
-      c.nextSafe=placements(c.board,next,entry(next,simpleOnly),simpleOnly,true).length>0
-        ||!!(allowHold&&held&&placements(c.board,held,entry(held,simpleOnly),simpleOnly,true).length);
+      c.nextSafe=placements(c.board,next,entry(next,simpleOnly),simpleOnly,true,tucks,rules).length>0
+        ||!!(allowHold&&held&&placements(c.board,held,entry(held,simpleOnly),simpleOnly,true,tucks,rules).length);
     }
     c.safety=danger?'downstack':'balanced';
     c.setup=profile==='versus'?setupPotential(m,c.nextQueue,c.newHold,allowHold):0;
@@ -210,10 +237,11 @@
     c.score=c.terminal+c.stepReward+(c.nextSafe?0:-1000000);
     return c;
   }
-  function analyze({board,piece,queue=[],hold=null,start=null,depth=2,allowHold=true,canHold=true,rootLimit=12,beamWidth=5,simpleOnly=false,profile='classic',chain={combo:0,b2b:0},attackPriority=false,tucks=false}){
+  function analyze({board,piece,queue=[],hold=null,start=null,depth=2,allowHold=true,canHold=true,rootLimit=12,beamWidth=5,simpleOnly=false,profile='classic',chain={combo:0,b2b:0},attackPriority=false,tucks=false,rotationSystem='srs',allow180=false}){
+    const rules={rotationSystem,allow180};
     const before=metrics(board);
-    const options=choices(board,piece,queue,hold,start,simpleOnly,allowHold&&canHold,tucks);
-    for(const c of options)evaluate(c,before,chain,profile,simpleOnly,allowHold,attackPriority,tucks);
+    const options=choices(board,piece,queue,hold,start,simpleOnly,allowHold&&canHold,tucks,rules);
+    for(const c of options)evaluate(c,before,chain,profile,simpleOnly,allowHold,attackPriority,tucks,rules);
     options.sort((a,b)=>b.score-a.score);
     const roots=options.slice(0,rootLimit),total=options.length;
     // Preserve at least one alternative from both HOLD branches when pruning.
@@ -235,9 +263,9 @@
         const next=[];
         for(const state of beam){
           if(!state.queue.length){next.push({...state,rank:state.value+state.terminal});continue;}
-          const ps=choices(state.board,state.queue[0],state.queue.slice(1),state.hold,null,simpleOnly,allowHold,tucks);
+          const ps=choices(state.board,state.queue[0],state.queue.slice(1),state.hold,null,simpleOnly,allowHold,tucks,rules);
           const previous=metrics(state.board);
-          for(const p of ps){evaluate(p,previous,state.chain,profile,simpleOnly,allowHold,attackPriority,tucks);p.rank=p.score;}
+          for(const p of ps){evaluate(p,previous,state.chain,profile,simpleOnly,allowHold,attackPriority,tucks,rules);p.rank=p.score;}
           ps.sort((a,b)=>b.rank-a.rank);
           for(const p of ps.slice(0,beamWidth)){
             if(!p.nextSafe)continue;

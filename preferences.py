@@ -2,7 +2,8 @@
 import json
 import math
 
-DEFAULTS = {'key_rate': 30, 'humanization': 0, 'dynamic_tempo': 0, 'use_hold': True, 'swap_rotation': False, 'attack_priority': True}
+ROTATION_KEYS = {'A':0x41, 'C':0x43, 'D':0x44, 'F':0x46, 'Q':0x51, 'E':0x45, 'Off':None}
+DEFAULTS = {'key_rate': 30, 'humanization': 0, 'dynamic_tempo': 0, 'use_hold': True, 'swap_rotation': False, 'attack_priority': True, 'rotation_180':'A'}
 
 def bounded(value, low, high, default):
     try:
@@ -20,6 +21,7 @@ def sanitize(data):
         'use_hold': data.get('use_hold') if isinstance(data.get('use_hold'), bool) else True,
         'swap_rotation': data.get('swap_rotation') if isinstance(data.get('swap_rotation'), bool) else False,
         'attack_priority': data.get('attack_priority') if isinstance(data.get('attack_priority'), bool) else True,
+        'rotation_180': data.get('rotation_180') if isinstance(data.get('rotation_180'),str) and data['rotation_180'] in ROTATION_KEYS else 'A',
     }
 
 def load(path):

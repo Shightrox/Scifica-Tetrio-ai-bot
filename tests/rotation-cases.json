@@ -1,0 +1,16 @@
+[
+  {
+    "name":"J half-turn single under a two-block roof",
+    "piece":"J",
+    "rows":[".......X.X","..........","XXXXXXX..."],
+    "target":{"x":7,"y":18,"r":0},
+    "path":["R","R","CW","SD","CW","R","180"]
+  },
+  {
+    "name":"SRS+ I tuck single through a narrow entrance",
+    "piece":"I",
+    "rows":["....X...X.","...X......",".X.....X.X","...X.X....","XXXX.XXXXX"],
+    "target":{"x":2,"y":16,"r":1},
+    "path":["CW","SD","CCW","CW"]
+  }
+]
