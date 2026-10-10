@@ -26,6 +26,19 @@ async function run(crash){
   assert.equal(r.result.candidates[0].lines,1);assert.equal(r.result.candidates[0].auto.mode,'survive');
   r=await wait(5,'final');assert(!r.continuation);assert.equal(r.result.candidates[0].intent,'downstack');
   console.log('PASS live solver returns two-piece survival before background refinement');
+  // Change families while a League search is running, then return to the
+  // cancelled family. The final A needs a fresh job, not a cleared pending slot.
+  const league={...base,piece:'L',start:E.entry('L',true),tucks:true,attackPriority:true,
+    rotationSystem:'srs+',allow180:true,queue:['T','I','O','S','Z']};
+  send(20,league);await wait(20,'fast');
+  send(21,{...league,piece:'S',start:E.entry('S',true)});send(22,league);
+  r=await wait(22,'final');assert(r.result.candidates[0].league);
+  assert(r.result.candidates[0].lookahead>=2);
+  const changed=structuredClone(league);changed.board[19][0]='G';
+  send(23,changed);r=await wait(23,'final');
+  assert.equal(r.result.candidates[0].board[19][0],'G','latest board wins over cancelled speculative work');
+  assert(!replies.some(r=>r.id>=20&&['error','worker-restart'].includes(r.stage)));
+  console.log('PASS League A/B/A cancellation, latest board and fresh completion without restarting the worker');
  }finally{p.stdin.end();setTimeout(()=>{if(p.exitCode===null)p.kill();},1000).unref();}
 }
 (async()=>{await run(false);await run(true);})().catch(e=>{console.error(e);process.exitCode=1;});

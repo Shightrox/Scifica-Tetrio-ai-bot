@@ -434,8 +434,13 @@ class AutoPlayer:
             planning_key=(tuple(tuple(r) for r in state['board']),state['piece'],state.get('generation'))
             if planning_key!=self.planning_key:self.planning_key=planning_key;self.planning_at=now
             wait_budget=(0 if advice['candidate'].get('lookahead',1)>=2 else .02) if advice['candidate'].get('auto',{}).get('mode')=='survive' else .04
+            end=landing(state['board'],state['piece'],state['start'])
+            if (state.get('tucks') and state.get('attackPriority') and state.get('profile')=='versus'
+                    and advice['candidate'].get('auto',{}).get('mode')!='survive' and observed
+                    and end and end['y']-state['start']['y']>6):
+                wait_budget=.55
             if advice['stage'] in ('fast','refined') and now-self.planning_at<wait_budget:
-                self.reason='Refining with NEXT';return
+                self.reason='Planning attack sequence' if wait_budget>.04 else 'Refining with NEXT';return
             c=advice['candidate']
             failed=self.failed_motion
             if failed and failed['count']>=2 and failed['context']==self.motion_context(state):
@@ -468,6 +473,7 @@ class AutoPlayer:
                        'actions':prefix+path+['DROP'],'human_prefix':len(prefix),'index':0,'result':c['board'],'chain':c.get('chain',{'combo':0,'b2b':0}),
                        'origin':dict(state['start']),'route':([None]*len(prefix))+route[:len(path)],'requiresSoftDrop':c.get('requiresSoftDrop',False),'spin':c.get('spin'),
                        'lookahead':c.get('lookahead',1),
+                       'league':c.get('league',False),
                        'auto':c.get('auto',{}),'intent':c.get('intent'),'comboPlan':c.get('comboPlan',0),
                        'pcVerified':c.get('pcVerified',False),'pcPieces':c.get('pcPieces',0),'attackPlan':c.get('attackPlan',0),
                        'attackPriority':c.get('attackPriority',False)}

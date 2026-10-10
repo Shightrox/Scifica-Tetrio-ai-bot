@@ -2,6 +2,7 @@ const {Worker,isMainThread,parentPort}=require('node:worker_threads');
 const E=require('./engine.js');
 const PC=require('./perfect-clear.cjs');
 const Attack=require('./attack-search.cjs');
+const League=require('./league-search.cjs');
 const resetHold=s=>s.allowHold&&s.canHold!==false&&(s.hold||s.queue?.[0])===s.piece&&s.start&&['x','y','r'].some(k=>s.start[k]!==E.entry(s.piece,!!s.simpleOnly)[k]);
 const identity=s=>JSON.stringify([s.board,s.piece,s.hold||null,!!s.allowHold,s.canHold!==false,!!resetHold(s),!!s.simpleOnly,s.profile||'classic',s.chain||{combo:0,b2b:0},!!s.attackPriority,!!s.tucks,s.rotationSystem||'srs',!!s.allow180,!!s.start?.uncertain]);
 const family=s=>JSON.stringify([identity(s),s.queue]);
@@ -11,17 +12,22 @@ if(!isMainThread){
     const at=performance.now();
     try{
       const pressure=m.state.attackPriority&&m.state.profile==='versus'&&E.autoPolicy(E.metrics(m.state.board)).mode!=='survive';
-      if(m.state.tucks)parentPort.postMessage({key:m.key,partial:true,result:E.analyze({...m.state,depth:2,rootLimit:4,beamWidth:2}),ms:performance.now()-at});
+      const league=pressure&&m.state.tucks,aborted=()=>m.cancel&&Atomics.load(m.cancel,0)!==0;
+      if(m.state.tucks&&!league)parentPort.postMessage({key:m.key,partial:true,result:E.analyze({...m.state,depth:2,rootLimit:4,beamWidth:2}),ms:performance.now()-at});
       const pc=pressure?PC.find(m.state):null;
       let result,continuation=null;
+      if(league)result=League.find(m.state,{aborted,onLayer:result=>{
+        if(!aborted())parentPort.postMessage({key:m.key,partial:true,result,ms:performance.now()-at});
+      }});
       if(pc?.sequence){
-        result=E.analyze({...m.state,depth:1});
+        result=result||E.analyze({...m.state,depth:1});
         const c=pc.sequence[0].candidate;
         if(c.value>=result.candidates[0]?.value){
           result.candidates=[c,...result.candidates.filter(p=>p.useHold!==c.useHold||JSON.stringify(p.pos)!==JSON.stringify(c.pos))].slice(0,3);
           continuation=pc.sequence;
-        }else result=null;
+        }else if(!league)result=null;
       }
+      if(aborted()){parentPort.postMessage({key:m.key,aborted:true});return;}
       if(!result)result=E.analyze({...m.state,depth:pressure?(m.state.tucks?6:4):3,rootLimit:pressure?6:8,beamWidth:3,maxMs:pressure?140:90});
       if(pressure&&!continuation){
         const chain=Attack.find(m.state),c=chain.sequence?.[0].candidate;
@@ -97,10 +103,10 @@ if(!isMainThread){
     }
     return null;
   }
-  function dispatch(){if(busy||!pending||!background)return;busy=pending;pending=null;background.postMessage(busy);
+  function dispatch(){if(busy||!pending||!background)return;busy={...pending,cancel:new Int32Array(new SharedArrayBuffer(4))};pending=null;background.postMessage(busy);
     watchdog=setTimeout(()=>restart(background,'Search worker timed out'),3000);}
   function deepen(state,key){
-    if(busy?.key===key){pending=null;return;}
+    if(busy?.key===key&&!Atomics.load(busy.cancel,0)){pending=null;return;}
     pending={state,key};dispatch();
   }
   function onResult(m){
@@ -109,6 +115,7 @@ if(!isMainThread){
       return;
     }
     clearTimeout(watchdog);const completed=busy;busy=null;
+    if(m.aborted){dispatch();return;}
     if(m.result)store(m.key,m.result,m.continuation,completed.state);
     if(m.continuation&&latest?.key===m.key)remember(m.continuation);
     if(latest?.key===m.key){
@@ -147,6 +154,7 @@ if(!isMainThread){
     let m;
     try{
       m=JSON.parse(line);const at=performance.now(),state={...m.state,allowHold:!!m.state.allowHold},key=family(state);
+      if(busy&&busy.key!==key)Atomics.store(busy.cancel,0,1);
       latest={id:m.id,at,state,key};
       const planned=continuation(state);
       if(planned){pending=null;emit({id:m.id,stage:'final',cache:true,continuation:true,result:planned,ms:performance.now()-at});return;}

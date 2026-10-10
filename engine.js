@@ -209,9 +209,12 @@
     // PC and Surge are separate additions, outside the combo multiplier.
     const garbageBonus=profile==='versus'&&c.lines>0&&(c.lines===4||c.spin)&&(c.garbageCleared||0)>0?1:0;
     const attack=(c.lines?Math.floor(Math.max(base*(1+.25*comboIndex),Math.log1p(1.25*comboIndex))):0)+garbageBonus;
-    const surge=c.lines&&!difficult&&(chain.b2b||0)>=4?chain.b2b:0;
+    // Internally b2b counts difficult clears: the second is displayed as x1.
+    // League Surge starts at displayed x4, i.e. five difficult clears.
+    const charge=Math.max(0,(chain.b2b||0)-1);
+    const surge=c.lines&&!difficult&&charge>=4?charge:0;
     const bonus=8*attack+Math.min(12,Math.max(0,combo-1)*2)+(c.perfectClear?40:0)+surge*6+(c.garbageCleared||0)*4;
-    return {reward:profile==='versus'?5*c.lines+bonus:9*c.lines,combo,b2b,attackEstimate:attack+(c.perfectClear?5:0)+surge};
+    return {reward:profile==='versus'?5*c.lines+bonus:9*c.lines,combo,b2b,surge,attackEstimate:attack+(c.perfectClear?5:0)+surge};
   }
   function choices(board,piece,queue,hold,start,simpleOnly,canHold,tucks=false,rules={}){
     const out=placements(board,piece,start||entry(piece,simpleOnly),simpleOnly,false,tucks,rules).map(c=>({...c,useHold:false,nextQueue:queue.slice(),newHold:hold}));
@@ -257,7 +260,7 @@
       // A second deep, narrow well competes for the I needed to attack.
       const forcedI=m.heights.reduce((n,h,x)=>n+(x===m.well?0:Math.max(0,Math.min(x?m.heights[x-1]:H,x<W-1?m.heights[x+1]:H)-h-2)),0);
       c.terminal+=Math.min(8,c.chain.b2b)*6+c.setup*.5-forcedI*4;
-      if(tucks){c.spinSetup=spinPotential(c.board,m,c.nextQueue,c.newHold,allowHold);c.terminal+=c.spinSetup;}
+      if(tucks&&!rules.league){c.spinSetup=spinPotential(c.board,m,c.nextQueue,c.newHold,allowHold);c.terminal+=c.spinSetup;}
     }
     c.score=c.terminal+c.stepReward+(c.nextSafe?0:-1000000);
     return c;

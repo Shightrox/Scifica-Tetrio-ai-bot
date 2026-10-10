@@ -74,7 +74,7 @@ def build():
              '--add-binary',f'{work/"node.exe"}{os.pathsep}runtime',
              '--add-data',f'{work/"scifica.ico"}{os.pathsep}assets',
              '--add-data',f'{notices}{os.pathsep}licenses']
-    for path,destination in [('engine.js','.'),('perfect-clear.cjs','.'),('attack-search.cjs','.'),('overlay-solver.cjs','.'),('LICENSE','.'),('assets/sample-board.png','assets')]:
+    for path,destination in [('engine.js','.'),('perfect-clear.cjs','.'),('attack-search.cjs','.'),('league-search.cjs','.'),('overlay-solver.cjs','.'),('LICENSE','.'),('assets/sample-board.png','assets')]:
         command.extend(['--add-data',f'{ROOT/path}{os.pathsep}{destination}'])
     command.append(str(ROOT/'overlay.py'))
     subprocess.run(command,cwd=ROOT,check=True)

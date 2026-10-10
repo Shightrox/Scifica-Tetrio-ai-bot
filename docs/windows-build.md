@@ -17,14 +17,14 @@ The build script downloads a pinned official Node.js archive and verifies its SH
 
 ```text
 dist/
-  Scifica-0.19.1-windows-x64.exe
+  Scifica-0.20.0-windows-x64.exe
   SHA256SUMS.txt
   BUILD-INFO.json
   LICENSE.txt
   THIRD-PARTY-LICENSES.zip
 ```
 
-`check_windows_build.py` launches the actual EXE from an unrelated working directory with Python and Node removed from PATH. Its isolated local-data directory prevents changes to the user's preferences. It checks packaged vision, Tk construction, capture exclusion, a final answer from the bundled search worker, and settings that survive process exit. Autopilot remains disarmed; the test sends no game keys. This is a dependency-isolation test on the build host, not a clean-VM compatibility certification.
+`check_windows_build.py` launches the actual EXE from an unrelated working directory with Python and Node removed from PATH. Its isolated local-data directory prevents changes to the user's preferences. It checks packaged vision, Tk construction, capture exclusion, a final answer from the bundled search worker, PC/spin routes, an L-roof-to-TSD League construction, and settings that survive process exit. Autopilot remains disarmed; the test sends no game keys. This is a dependency-isolation test on the build host, not a clean-VM compatibility certification.
 
 Build versions are recorded in `BUILD-INFO.json`. Different build hosts or dependency versions may produce different executable hashes; the recipe is repeatable, not claimed to be byte-for-byte reproducible.
 

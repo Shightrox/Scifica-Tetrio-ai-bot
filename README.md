@@ -28,7 +28,7 @@ The browser sandbox above runs entirely locally. The screenshot uses a synthetic
 - **See the field.** Direct Windows capture, four rows above spawn, NEXT and HOLD. Grid-aligned block contours help separate pieces from colorful backgrounds.
 - **Plan ahead.** TETR.IO SRS+ reachability, 90° / 180° turns, HOLD branches, limited multi-piece search and speculative next-state caching.
 - **Adapt.** Prepare quads and short clear chains when there is space; prioritize downstacking and the next spawn when garbage consumes headroom. Emergency search evaluates the next piece before its first answer.
-- **Build pressure.** Attack priority favors estimated garbage output and attack per piece. A dedicated search proves perfect clears using up to six known pieces and HOLD, then keeps the verified continuation as NEXT advances.
+- **Build League attacks.** Attack priority searches a wider set of HOLD and T-spin preparations, checks spin entrances and the field after clearing, and preserves useful B2B chains. A separate search proves perfect clears using up to six known pieces and HOLD.
 - **Enter covered slots.** Soft-drop to a verified surface, then rotate or slide under an overhang. T-spin and immobile mini-spin clears contribute to attack and B2B estimates. Native attack lookahead covers up to six known placements.
 - **Verify each key.** Observe the result of movement, HOLD and hard drop before advancing. Recover and replan after missed input, changed stacks or search-worker failure. An armed pilot resumes after a verified new round.
 - **Set the tempo.** Speed sets base key spacing. Dynamic tempo adds thought pauses and varied tap intervals, with less hesitation under pressure. Humanization separately adds occasional verified lateral out-and-back moves in low-risk positions.
@@ -50,7 +50,7 @@ Edited illustration from a user screenshot: nickname changed to `scifica`; the c
 
 ### Windows executable
 
-Download **`Scifica-0.19.1-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
+Download **`Scifica-0.20.0-windows-x64.exe`** from [Releases](https://github.com/Shightrox/Scifica-Tetrio-ai-bot/releases/latest) and run it. Python, Node.js and the native dependencies are bundled. No installer or administrator rights are needed.
 
 Requires **64-bit Windows 10 2004+ or Windows 11**. The executable opens the desktop pilot; the optional browser sandbox remains available from source. Settings and logs live in `%LOCALAPPDATA%\Scifica`, outside the executable's temporary extraction directory. The first launch may take a few seconds to unpack.
 
@@ -90,7 +90,7 @@ Only the Windows overlay sends game input. The browser has its own sandbox and a
 | Humanization: 0–100% | Probability of one sidestep + return on an eligible piece; also up to ±12% timing variation below MAX |
 | Dynamic tempo: 0–100% | Strength of thought pauses, per-piece rhythm and varied tap spacing; 0 keeps previous timing |
 | HOLD | Allow the search to use Shift to exchange the piece |
-| Attack priority | Favor garbage, B2B and clear chains; enable dedicated PC search. On by default; survival still overrides aggression |
+| Attack priority | Enable League construction, T-spin/B2B preparation and PC search. On by default; survival overrides aggression |
 | Swap Z / X | Reverse the configured rotation keys |
 | 180 key | Half-turn binding, A by default. Choose Off to exclude 180° routes |
 | Return to game | Give focus back to the selected game window |
@@ -108,9 +108,9 @@ Humanization defaults to **0%**. Extra movement is skipped for high stacks, low 
 
 **Dynamic tempo** also defaults to **0%** and works independently of movement humanization, including at Speed MAX. Try 30–40% for light variation. At 100%, safe positions get an 80–460 ms thought budget once per placement and roughly 18–220 ms extra spacing per tap, with a shared per-piece rhythm and occasional hesitations. Frame feedback can take longer. New frames and HOLD do not restart the thought pause. As landing clearance shrinks, waits shorten; high stacks, survival and recovery bypass the added delays. The configured base Speed applies to ordinary movement; survival, active tucks and an aligned final drop bypass it. Saved settings are unchanged and ordinary pacing returns after rescue. Timing changes apply live and never block capture, search, acknowledgement or the focus guard.
 
-Version **0.19.1** strengthens garbage evacuation and round recovery: no attack/setup bonuses inside an emergency search, explicit protection of the upper garbage entrance, and fresh round state before a new search starts. [Changes and regression cases](docs/survival-v0.19.1.md).
+Version **0.20.0** focuses on TETRA LEAGUE construction: a wider, queue-aware beam, reachable T-slot preparation, better use of T and HOLD, and corrected Surge indexing. On a safe observed piece, the controller gives refinement up to 550 ms before committing; a final answer is accepted immediately. Low clearance and survival retain the fast path. [Research, code review and comparison with 0.19.1](docs/tetra-league-v0.20.0.md). The [garbage evacuation and round recovery fixes](docs/survival-v0.19.1.md) remain active.
 
-With **Attack priority** enabled, the panel displays `PRESSURE` or a verified `PC / N pieces` plan. The `~attack` number estimates the known sequence before incoming-garbage cancellation and room modifiers. Changing the setting replans while preserving pending HOLD/DROP verification. Turning it off restores the balanced three-piece search. [Strategy details and measured comparison](docs/attack-priority.md).
+With **Attack priority** enabled, the panel displays `LEAGUE` for construction search, `PRESSURE` for other attack analysis, or a verified `PC / N pieces` plan. The `~attack` number estimates the known sequence before incoming-garbage cancellation and room modifiers. Changing the setting replans while preserving pending HOLD/DROP verification. Turning it off restores the balanced three-piece search. [Strategy history](docs/attack-priority.md).
 
 Preferences are stored in `settings.json` (beside the source, or under `%LOCALAPPDATA%\Scifica` for the EXE); capture rectangles and armed state are not persisted. Opening the panel pauses input through the focus guard. Use **Return to game** to continue. Minimizing the panel keeps the overlay running.
 
@@ -128,7 +128,7 @@ Preferences are stored in `settings.json` (beside the source, or under `%LOCALAP
                        next frame <── verify <── tap one key
 ```
 
-The fast result comes first. A deeper worker refines the choice and precomputes likely continuations. The pilot verifies every tap and checks the exact landing before hard drop. The strategic evaluator weighs clear chains, quads, perfect clears and future opportunities against holes, burial and top-out risk.
+The fast result comes first for display and fallback. A deeper worker refines the choice and precomputes likely continuations; safe League execution allows that construction search to finish before committing. The pilot verifies every tap and checks the exact landing before hard drop. The strategic evaluator weighs clear chains, quads, perfect clears and usable T-slots against holes, burial and top-out risk.
 
 Read [the architecture notes](docs/architecture.md) for the capture model, AUTO policy, speed semantics and recovery rules.
 
@@ -166,6 +166,6 @@ Runtime logs, private reference captures, virtual environments and preferences a
 
 ## References
 
-Strategy concepts: [How to Tetris: downstacking and combos](https://howtotetris.com/downstacking-and-combos/), [core habits](https://howtotetris.com/core-tetris-habits/), and [skimming](https://howtotetris.com/the-whys-of-downstacking-and-skimming/). Related evaluator research: [Cold Clear](https://github.com/MinusKelvin/cold-clear/blob/master/bot/src/evaluation/standard.rs). Game information: [TETR.IO mechanics](https://tetrio.github.io/faq/mechanics.html).
+The [0.20.0 research report](docs/tetra-league-v0.20.0.md) links the official League balance changes, FOUR's construction/opening guides, Hard Drop's perfect-clear explanation and the original Cold Clear 2 evaluator, with implementation decisions and remaining limits for each topic.
 
 Scifica is an independent project and is not affiliated with TETR.IO. Code is [MIT licensed](LICENSE); TETR.IO and its assets belong to their respective owners.

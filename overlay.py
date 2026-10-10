@@ -41,10 +41,11 @@ def auto_description(plan):
         return f"PC / {plan.get('pcPieces',1)} pieces · ~{plan.get('attackPlan',0):g} attack"
     mode={'attack':'ATTACK','balance':'BALANCE','survive':'SURVIVE'}.get(plan.get('auto',{}).get('mode'),'BALANCE')
     goal={'downstack':'downstack','perfect-clear':'perfect clear','quad':'quad',
-          'prepare-quad':'prepare quad','clean-stack':'clean stack',
+          'prepare-quad':'prepare quad','prepare-spin':'prepare T-spin','clean-stack':'clean stack',
           'combo':f"chain up to {plan.get('comboPlan',2)} clears",'t-spin':'T-spin attack'}.get(plan.get('intent'),'replan')
     if plan.get('attackPriority') and mode!='SURVIVE':
-        return f"PRESSURE / {goal} · ~{plan.get('attackPlan',0):g} attack"
+        label='LEAGUE' if plan.get('league') else 'PRESSURE'
+        return f"{label} / {goal} · ~{plan.get('attackPlan',0):g} attack"
     return f'AUTO / {mode} · {goal}'
 
 class Overlay:
@@ -450,7 +451,7 @@ class Overlay:
         if self.live_state and self.vision_source=='pixels' and self.live_state['start']['y']<0:origin='above grid'
         metrics=f"{self.capture_fps:.0f} FPS / {lag} / {origin}"
         if self.metrics_status.get()!=metrics:self.metrics_status.set(metrics)
-        decision=f"NEXT {' '.join(self.preview) or '--'}   HOLD {held or '--'}\nCOMBO {self.player.chain['combo']}   B2B {self.player.chain['b2b']}   LOCKS {self.player.placed}"
+        decision=f"NEXT {' '.join(self.preview) or '--'}   HOLD {held or '--'}\nCOMBO {max(0,self.player.chain['combo']-1)}   B2B {max(0,self.player.chain['b2b']-1)}   LOCKS {self.player.placed}"
         if self.game_blocked:decision='Game message blocks the field.\nClick inside TETR.IO to resume.'
         elif self.notice_cells and not self.live_state:decision='Not enough visible fragments.\nKeeping the last verified plan.'
         if self.decision_status.get()!=decision:self.decision_status.set(decision)

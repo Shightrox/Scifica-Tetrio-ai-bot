@@ -69,6 +69,19 @@ def run(report_path):
         assert app.advice and app.advice['candidate'].get('spin')=='full','Bundled native spin search failed'
         assert app.advice['candidate']['requiresSoftDrop'] and app.advice['candidate']['lines']==2
         report['native_t_spin']='double with verified descent checkpoints'
+        construction_check="""
+        const E=require('./engine.js'),L=require('./league-search.cjs'),board=E.empty();
+        board[18]=[...'XXX...XXXX'].map(v=>v==='.'?null:'J');
+        board[19]=[...'XXXX.XXXXX'].map(v=>v==='.'?null:'J');
+        const r=L.find({board,piece:'L',start:E.entry('L',true),queue:['T','I','O','S','Z'],
+          hold:null,allowHold:false,simpleOnly:true,tucks:true,rotationSystem:'srs+',allow180:true,
+          profile:'versus',attackPriority:true,chain:{combo:0,b2b:0}},{maxMs:2000,maxDepth:3});
+        const c=r.candidates[0];
+        if(!c.league||c.lines!==0||!c.future.some(p=>p.spin==='full'&&p.lines===2))throw Error('Missing TSD construction');
+        process.stdout.write('L overhang -> T-spin double');
+        """
+        report['league_construction']=subprocess.check_output([node,'-e',construction_check],cwd=RESOURCE_ROOT,text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,timeout=15)
         rotation_check="""
         const E=require('./engine.js');
         for(const [piece,rows,target] of [['J',['.......X.X','..........','XXXXXXX...'],{x:7,y:18,r:0}],

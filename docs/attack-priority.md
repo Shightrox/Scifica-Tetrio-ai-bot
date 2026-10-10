@@ -2,6 +2,8 @@
 
 Enabled by default in the desktop pilot. It favors estimated garbage output over low-value skimming, while keeping the existing survival switch. The speed slider still controls key tempo independently.
 
+**Current native behavior is documented in the [0.20.0 League construction review](tetra-league-v0.20.0.md).** It replaces the six-root pressure refinement with a 24-state construction beam, adds verified T-slot preparation, corrects Surge indexing, and allows up to 550 ms of initial refinement on a safe observed piece. The sections below record earlier versions and their measurements; their pressure timing is historical. Turning Attack priority off still restores balanced search.
+
 ## What changed in 0.16.0
 
 - **Proved perfect clears.** A separate search uses the visible active piece, up to five NEXT pieces and available HOLD. It can find a four-to-six-piece finish outside the ordinary beam. It never assumes the next unseen bag or promises a fixed opener will work.

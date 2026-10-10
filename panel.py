@@ -122,7 +122,7 @@ def build(app, root_path):
     tk.Checkbutton(attack_row,text='Attack priority',variable=app.attack_priority,command=strategy_changed,
                    bg=BG,fg=FG,selectcolor=PANEL,activebackground=BG,activeforeground=ACCENT,
                    font=(FONT,9),bd=0,highlightthickness=0).pack(side='left')
-    tk.Label(attack_row,text='PC / B2B / clear chains',font=(FONT,8),bg=BG,fg=MUTED).pack(side='right')
+    tk.Label(attack_row,text='LEAGUE / T-SPIN / B2B',font=(FONT,8),bg=BG,fg=MUTED).pack(side='right')
     row=tk.Frame(body,bg=BG);row.pack(fill='x')
     app.auto_button=button(row,'[>] Start autopilot',app.toggle_autoplay,True)
     app.auto_button.pack(side='left',fill='x',expand=True,padx=(0,6))
